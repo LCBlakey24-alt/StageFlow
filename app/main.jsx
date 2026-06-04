@@ -6,7 +6,7 @@ import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 
 const starter = {
   screen: 'home', step: 'list', tab: 'framework', selected: '', active: 'l1',
-  lessons: demoLessons, learners: demoLearners, framework: demoFramework,
+  lessons: demoLessons.map(l => ({ duration: 30, className: '', coach: '', ...l })), learners: demoLearners, framework: demoFramework,
   certificates: [
     { id: 'cert1', name: 'Highest Stage Certificate', rule: 'Highest achieved stage', font: 'Serif', size: 34, groupBy: 'Year group' },
     { id: 'cert2', name: 'National Curriculum Certificate', rule: 'National Curriculum achieved', font: 'Sans Serif', size: 28, groupBy: 'Award' }
@@ -17,8 +17,12 @@ const starter = {
     { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
-  audit: ['MVP v2 structure restored']
+  audit: ['Calendar timetable added']
 };
+
+const timeSlots = ['08:30','08:45','09:00','09:15','09:30','09:45','10:00','10:15','10:30','10:45','11:00','11:15','11:30','11:45','12:00','12:15','12:30','12:45','13:00','13:15','13:30','13:45','14:00','14:15','14:30','14:45','15:00'];
+const durations = [15, 30, 45, 60, 75, 90];
+const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 
 function App() {
   const [s, setS] = useState(() => loadAppState(starter));
@@ -36,9 +40,14 @@ function Home({ s, up }) {
 }
 
 function Timetable({ s, up }) {
-  function add() { const id = 'l' + Date.now(); up({ lessons: [...s.lessons, { id, time: '09:30', school: 'New School', year: 'Year 5', name: 'New Lesson', mode: s.framework.mode }], audit: ['Created lesson', ...s.audit] }); }
+  function addAt(time) {
+    const id = 'l' + Date.now();
+    const lesson = { id, time, duration: 30, school: 'New School', year: 'Year 5', className: '', coach: '', name: 'New Lesson', mode: s.framework.mode };
+    up({ lessons: [...s.lessons, lesson], active: id, audit: [`Created lesson at ${time}`, ...s.audit] });
+  }
   function edit(id, k, v) { up({ lessons: s.lessons.map(l => l.id === id ? { ...l, [k]: v } : l) }); }
-  return <><section className='hero'><h1>Timetable</h1><p>Build the day first, then teach from each lesson.</p></section><button className='btn org' onClick={add}>+ Add timetable session</button>{s.lessons.map(l => <section className='card' key={l.id}><div className='lesson'><div className='time'>{l.time}</div><div><h2>{l.name}</h2><p className='muted'>{l.school} · {l.year} · {l.mode}</p></div><button className='btn org' onClick={() => up({ active: l.id, step: 'register' })}>Open</button></div><div className='grid'><Field label='Time' value={l.time} onChange={v => edit(l.id, 'time', v)} /><Field label='School / Venue' value={l.school} onChange={v => edit(l.id, 'school', v)} /><Field label='Year / Class' value={l.year} onChange={v => edit(l.id, 'year', v)} /><Field label='Lesson name' value={l.name} onChange={v => edit(l.id, 'name', v)} /><div className='field'><label>Mode</label><select value={l.mode} onChange={e => edit(l.id, 'mode', e.target.value)}>{['Stages + National Curriculum', 'National Curriculum only'].map(x => <option key={x}>{x}</option>)}</select></div></div></section>)}</>;
+  const sorted = [...s.lessons].sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  return <><section className='hero'><h1>Timetable</h1><p>Calendar-style day builder. Tap a time slot to create a lesson. Set duration to make the lesson block longer.</p></section><div className='calendar-toolbar card'><div><h2>School day calendar</h2><p className='muted'>This is the first version of the Google Calendar style timetable. Drag and resize can come next.</p></div><button className='btn org' onClick={() => addAt('09:00')}>+ Add 09:00 lesson</button></div><section className='calendar-shell'>{timeSlots.map(t => { const items = sorted.filter(l => l.time === t); return <div className='calendar-row' key={t}><button className='calendar-time' onClick={() => addAt(t)}>{t}</button><div className='calendar-slot' onClick={() => !items.length && addAt(t)}>{items.length === 0 && <span className='empty-slot'>Tap to add lesson</span>}{items.map(l => <div className='calendar-event' key={l.id} style={{ minHeight: Math.max(44, ((Number(l.duration) || 30) / 15) * 36) }} onClick={e => e.stopPropagation()}><div className='event-head'><strong>{l.name}</strong><button className='btn' onClick={() => up({ active: l.id, step: 'register' })}>Open</button></div><p>{l.school} · {l.year}{l.className ? ` · ${l.className}` : ''}</p><span className='pill'>{l.duration || 30} mins</span><span className='pill'>{l.mode}</span></div>)}</div></div>; })}</section><section className='card'><h2>Edit sessions</h2><div className='grid'>{sorted.map(l => <div className='card' key={l.id}><h3>{l.time} · {l.name}</h3><Field label='Time' value={l.time} onChange={v => edit(l.id, 'time', v)} /><div className='field'><label>Duration</label><select value={l.duration || 30} onChange={e => edit(l.id, 'duration', Number(e.target.value))}>{durations.map(x => <option key={x} value={x}>{x} mins</option>)}</select></div><Field label='School / Venue' value={l.school} onChange={v => edit(l.id, 'school', v)} /><Field label='Year / Class' value={l.year} onChange={v => edit(l.id, 'year', v)} /><Field label='Lesson name' value={l.name} onChange={v => edit(l.id, 'name', v)} /><Field label='Coach' value={l.coach || ''} onChange={v => edit(l.id, 'coach', v)} /><Field label='Class / SEN' value={l.className || ''} onChange={v => edit(l.id, 'className', v)} /><div className='field'><label>Mode</label><select value={l.mode} onChange={e => edit(l.id, 'mode', e.target.value)}>{modes.map(x => <option key={x}>{x}</option>)}</select></div></div>)}</div></section></>;
 }
 
 function Lesson({ s, up, lesson }) {
