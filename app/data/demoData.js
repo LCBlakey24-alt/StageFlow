@@ -29,6 +29,12 @@ export const stageCriteria = {
   'Water Safety Award': ['Signal for help', 'Travel to safety', 'Exit safely']
 };
 
+export const groupTemplates = [
+  { id: 'g1', name: 'Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue' },
+  { id: 'g2', name: 'Group 2', detail: 'Stages 4-5', stages: ['Stage 4'], colour: 'orange' },
+  { id: 'g3', name: 'Group 3', detail: 'Stage 6 + Water Safety', stages: ['Water Safety Award'], colour: 'gold' }
+];
+
 export const demoFramework = {
   name: 'Swim at School',
   area: 'School Swimming',
@@ -37,12 +43,13 @@ export const demoFramework = {
   stages: Object.keys(stageCriteria),
   criteria: stageCriteria,
   nationalCurriculum,
-  groups: ['Group 1: Stages 1-3', 'Group 2: Stages 4-5', 'Group 3: Stage 6 + Water Safety']
+  groupTemplates,
+  groups: groupTemplates.map(g => `${g.name}: ${g.detail}`)
 };
 
 export const demoLessons = [
-  { id: 'l1', time: '09:30', school: 'Greenfield Primary', year: 'Year 5', name: 'Year 5 Group 1', mode: 'Stages + National Curriculum' },
-  { id: 'l2', time: '10:00', school: 'Greenfield Primary', year: 'Year 5', name: 'Year 5 Group 2', mode: 'Stages + National Curriculum' }
+  { id: 'l1', day: 'Tuesday', time: '09:30', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Lewis', name: 'Year 5 Group 1', groupTemplateId: 'g1', mode: 'Stages + National Curriculum' },
+  { id: 'l2', day: 'Tuesday', time: '10:00', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Sarah', name: 'Year 5 Group 2', groupTemplateId: 'g2', mode: 'Stages + National Curriculum' }
 ];
 
 export const demoLearners = [
