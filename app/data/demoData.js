@@ -22,17 +22,54 @@ export const scoringSystems = {
 };
 
 export const stageCriteria = {
-  'Stage 1': ['Enter water safely', 'Blow bubbles', 'Travel 5m on front', 'Travel 5m on back'],
-  'Stage 2': ['Float on front', 'Float on back', 'Swim 10m on front', 'Swim 10m on back'],
-  'Stage 3': ['Swim 15m on front', 'Swim 15m on back', 'Tread water'],
-  'Stage 4': ['Swim 25m front crawl', 'Swim 25m backstroke'],
-  'Water Safety Award': ['Signal for help', 'Travel to safety', 'Exit safely']
+  'Stage 1': [
+    'Enter water safely',
+    'Blow bubbles',
+    'Travel 5m on front',
+    'Travel 5m on back'
+  ],
+  'Stage 2': [
+    'Float on front',
+    'Float on back',
+    'Swim 10m on front',
+    'Swim 10m on back'
+  ],
+  'Stage 3': [
+    'Swim 15m on front',
+    'Swim 15m on back',
+    'Tread water for 30 seconds',
+    'Rotate from front to back and recover'
+  ],
+  'Stage 4': [
+    'Swim 20m on front',
+    'Swim 20m on back',
+    'Swim 25m front crawl',
+    'Swim 25m backstroke'
+  ],
+  'Stage 5': [
+    'Swim 50m front crawl',
+    'Swim 50m backstroke',
+    'Swim 25m breaststroke',
+    'Demonstrate safe deep-water confidence'
+  ],
+  'Stage 6': [
+    'Swim 100m continuously',
+    'Swim 25m front crawl with breathing control',
+    'Swim 25m backstroke with good body position',
+    'Perform a safe self-rescue sequence'
+  ],
+  'Water Safety Award': [
+    'Signal for help',
+    'Travel to safety',
+    'Float or tread water while waiting for help',
+    'Exit safely'
+  ]
 };
 
 export const groupTemplates = [
   { id: 'g1', name: 'Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue' },
-  { id: 'g2', name: 'Group 2', detail: 'Stages 4-5', stages: ['Stage 4'], colour: 'orange' },
-  { id: 'g3', name: 'Group 3', detail: 'Stage 6 + Water Safety', stages: ['Water Safety Award'], colour: 'gold' }
+  { id: 'g2', name: 'Group 2', detail: 'Stages 4-5', stages: ['Stage 4', 'Stage 5'], colour: 'orange' },
+  { id: 'g3', name: 'Group 3', detail: 'Stage 6 + Water Safety', stages: ['Stage 6', 'Water Safety Award'], colour: 'gold' }
 ];
 
 export const demoFramework = {
