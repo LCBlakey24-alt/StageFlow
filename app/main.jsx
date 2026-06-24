@@ -33,7 +33,7 @@ const starter = {
     { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
-  audit: ['Flexible stage movement added']
+  audit: ['Group movement auto-pass added']
 };
 
 function lessonDay(lesson) { return lesson?.day || 'Tuesday'; }
@@ -91,6 +91,11 @@ function applyStageAutoPass(state, currentResults, nextStage) {
   criteriaBeforeStage(state, nextStage).forEach(criteria => { next[criteria] = 'pass'; });
   return next;
 }
+function moveLearnerToGroupStage(state, learner, groupId) {
+  const nextStage = firstStageForGroup(state, groupId);
+  const movedUp = stageIndex(state, nextStage) > stageIndex(state, learner.stage);
+  return { ...learner, stage: nextStage, res: movedUp ? applyStageAutoPass(state, learner.res, nextStage) : learner.res };
+}
 
 function App() {
   const [state, setState] = useState(() => loadAppState(starter));
@@ -145,7 +150,18 @@ function Timetable({ state, update }) {
   function openDraft(time) { const first = templateOptions[0]?.id || ''; update({ draft: { day, time, duration: 30, school: 'New School', year: 'Year 5', className: '', coach: '', name: 'New Lesson', groupTemplateId: first, pastedNames: '', mode: state.framework.mode } }); }
   function draft(key, value) { update({ draft: { ...state.draft, [key]: value } }); }
   function createLesson() { if (!state.draft) return; const id = 'l' + Date.now(); const stage = firstStageForGroup(state, state.draft.groupTemplateId); const newLearners = createLearnersFromText(state.draft.pastedNames, id, stage); const lesson = { ...state.draft }; delete lesson.pastedNames; update({ lessons: [...state.lessons, { id, ...lesson }], learners: [...state.learners, ...newLearners], active: id, draft: null, audit: [`Created ${state.draft.name} with ${newLearners.length} learner(s)`, ...state.audit] }); }
-  function edit(id, key, value) { update({ lessons: state.lessons.map(l => l.id === id ? { ...l, [key]: value } : l) }); }
+  function edit(id, key, value) {
+    if (key === 'groupTemplateId') {
+      const groupName = groupFor(state, value)?.name || 'new group';
+      update({
+        lessons: state.lessons.map(l => l.id === id ? { ...l, groupTemplateId: value } : l),
+        learners: state.learners.map(p => p.lesson === id ? moveLearnerToGroupStage(state, p, value) : p),
+        audit: [`Moved lesson to ${groupName} and updated learner stages`, ...state.audit]
+      });
+      return;
+    }
+    update({ lessons: state.lessons.map(l => l.id === id ? { ...l, [key]: value } : l) });
+  }
   function move(id, slots) { const lesson = state.lessons.find(l => l.id === id); const i = timeSlots.indexOf(lesson?.time); edit(id, 'time', timeSlots[clamp(i + slots, 0, timeSlots.length - 1)] || lesson?.time || '09:00'); }
   function resize(id, delta) { const lesson = state.lessons.find(l => l.id === id); edit(id, 'duration', clamp((Number(lesson?.duration) || 30) + delta, 15, 120)); }
   function duplicate(lesson) { const id = 'l' + Date.now(); update({ lessons: [...state.lessons, { ...lesson, id, name: lesson.name + ' copy' }], audit: [`Duplicated ${lesson.name}`, ...state.audit] }); }
