@@ -23,17 +23,41 @@ export function clearAppState() {
   window.localStorage.removeItem(KEY);
 }
 
+function mergeUnique(base = [], extra = []) {
+  return [...base, ...extra.filter(item => !base.includes(item))];
+}
+
+function mergeGroupTemplates(savedGroups = [], fallbackGroups = []) {
+  const savedById = new Map(savedGroups.map(group => [group.id, group]));
+  const mergedDefaults = fallbackGroups.map(group => {
+    const saved = savedById.get(group.id);
+    if (!saved) return group;
+    return {
+      ...group,
+      ...saved,
+      stages: mergeUnique(saved.stages || [], group.stages || [])
+    };
+  });
+  const customGroups = savedGroups.filter(group => !fallbackGroups.some(fallback => fallback.id === group.id));
+  return [...mergedDefaults, ...customGroups];
+}
+
 export function normaliseState(saved, fallback) {
   const base = { ...fallback, ...(saved || {}) };
   const framework = {
     ...(fallback.framework || {}),
     ...(base.framework || {})
   };
-  framework.stages = framework.stages?.length ? framework.stages : fallback.framework.stages;
+
+  framework.stages = mergeUnique(
+    framework.stages?.length ? framework.stages : [],
+    fallback.framework?.stages || []
+  );
   framework.criteria = { ...(fallback.framework.criteria || {}), ...(framework.criteria || {}) };
-  framework.groupTemplates = framework.groupTemplates?.length
-    ? framework.groupTemplates
-    : fallback.framework.groupTemplates || [];
+  framework.groupTemplates = mergeGroupTemplates(
+    framework.groupTemplates?.length ? framework.groupTemplates : [],
+    fallback.framework?.groupTemplates || []
+  );
   framework.groups = framework.groupTemplates?.length
     ? framework.groupTemplates.map(g => `${g.name}: ${g.detail || ''}`)
     : framework.groups || [];
