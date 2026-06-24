@@ -33,7 +33,7 @@ const starter = {
     { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
-  audit: ['Distance auto-pass rules added']
+  audit: ['Flexible stage movement added']
 };
 
 function lessonDay(lesson) { return lesson?.day || 'Tuesday'; }
@@ -78,6 +78,18 @@ function getDistanceFromCriteria(criteria) {
   if (text.includes('front')) return { stroke: 'front', metres: Number(match[1]) };
   if (text.includes('back')) return { stroke: 'back', metres: Number(match[1]) };
   return null;
+}
+function stageIndex(state, stage) { return (state.framework?.stages || []).indexOf(stage); }
+function criteriaBeforeStage(state, stage) {
+  const stages = state.framework?.stages || [];
+  const target = stageIndex(state, stage);
+  if (target <= 0) return [];
+  return stages.slice(0, target).flatMap(s => state.framework?.criteria?.[s] || stageCriteria[s] || []);
+}
+function applyStageAutoPass(state, currentResults, nextStage) {
+  const next = { ...(currentResults || {}) };
+  criteriaBeforeStage(state, nextStage).forEach(criteria => { next[criteria] = 'pass'; });
+  return next;
 }
 
 function App() {
@@ -180,6 +192,10 @@ function Assess({ state, update, lesson, kids, selected }) {
     const ncKey = stroke === 'front' ? '25m front crawl' : '25m backstroke';
     change({ dist: { ...selected.dist, [stroke]: value }, res: applyDistanceAutoPass(state, selected.res, stroke, metres), nc: { ...selected.nc, [ncKey]: metres >= 25 } });
   }
+  function setStage(nextStage) {
+    const movedUp = stageIndex(state, nextStage) > stageIndex(state, selected.stage);
+    change({ stage: nextStage, res: movedUp ? applyStageAutoPass(state, selected.res, nextStage) : selected.res });
+  }
   function score(criteria, value) {
     const distance = getDistanceFromCriteria(criteria);
     if (value === 'pass' && distance) {
@@ -192,9 +208,9 @@ function Assess({ state, update, lesson, kids, selected }) {
       change({ res: { ...selected.res, [criteria]: value } });
     }
   }
-  const allowedStages = groupFor(state, lesson.groupTemplateId)?.stages || state.framework.stages || [];
+  const stageOptions = state.framework?.stages || [];
   const criteria = lesson.mode === 'National Curriculum only' ? [] : (state.framework.criteria?.[selected.stage] || stageCriteria[selected.stage] || []);
-  return <><div className='grid2'><section className='card'>{kids.map(p => <button className={'btn ' + (p.id === selected.id ? 'org' : '')} key={p.id} onClick={() => update({ selected: p.id })}>{p.name}</button>)}</section><section className='card'><h2>{selected.name}</h2>{lesson.mode !== 'National Curriculum only' && <Select label='Stage' value={selected.stage} onChange={v => change({ stage: v })} options={allowedStages.map(x => ({ value: x, label: x }))} />}<div className='grid2'><Distance label='Distance front' value={selected.dist.front} onChange={v => setDistance('front', v)} /><Distance label='Distance back' value={selected.dist.back} onChange={v => setDistance('back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <div className='criteria' key={c}><b>{c}</b><div>{scores.map(v => <button className={'btn ' + (selected.res[c] === v ? 'org' : '')} key={v} onClick={() => score(c, v)}>{v}</button>)}</div></div>)}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc[item]} onChange={e => change({ nc: { ...selected.nc, [item]: e.target.checked } })} /> {item}</label>)}</section></div><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button><button className='btn org' onClick={() => update({ step: 'save' })}>Save lesson</button></div></>;
+  return <><div className='grid2'><section className='card'>{kids.map(p => <button className={'btn ' + (p.id === selected.id ? 'org' : '')} key={p.id} onClick={() => update({ selected: p.id })}>{p.name}</button>)}</section><section className='card'><h2>{selected.name}</h2>{lesson.mode !== 'National Curriculum only' && <><Select label='Current working stage' value={selected.stage} onChange={setStage} options={stageOptions.map(x => ({ value: x, label: x }))} /><p className='muted'>You can move a learner freely. Moving up auto-passes all earlier stage criteria, but moving down does not erase evidence.</p></>}<div className='grid2'><Distance label='Distance front' value={selected.dist.front} onChange={v => setDistance('front', v)} /><Distance label='Distance back' value={selected.dist.back} onChange={v => setDistance('back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <div className='criteria' key={c}><b>{c}</b><div>{scores.map(v => <button className={'btn ' + (selected.res[c] === v ? 'org' : '')} key={v} onClick={() => score(c, v)}>{v}</button>)}</div></div>)}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc[item]} onChange={e => change({ nc: { ...selected.nc, [item]: e.target.checked } })} /> {item}</label>)}</section></div><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button><button className='btn org' onClick={() => update({ step: 'save' })}>Save lesson</button></div></>;
 }
 
 function HealthCheck({ state, update }) {
