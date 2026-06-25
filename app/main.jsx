@@ -1,12 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/app.css';
+import './styles/calendar-overlay.css';
 import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 
+function timeToMinutes(time) { const [h, m] = String(time || '00:00').split(':').map(Number); return ((Number.isFinite(h) ? h : 0) * 60) + (Number.isFinite(m) ? m : 0); }
+function formatTime(total) { const hh = String(Math.floor(total / 60)).padStart(2, '0'); const mm = String(total % 60).padStart(2, '0'); return `${hh}:${mm}`; }
+function makeTimeSlots(start = '08:00', end = '21:00', step = 15) { const slots = []; for (let t = timeToMinutes(start); t <= timeToMinutes(end); t += step) slots.push(formatTime(t)); return slots; }
+
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const timeSlots = ['08:30','08:45','09:00','09:15','09:30','09:45','10:00','10:15','10:30','10:45','11:00','11:15','11:30','11:45','12:00','12:15','12:30','12:45','13:00','13:15','13:30','13:45','14:00','14:15','14:30','14:45','15:00'];
-const durations = [15, 30, 45, 60, 75, 90];
+const timeSlots = makeTimeSlots('08:00', '21:00', 15);
+const durations = [15, 30, 45, 60, 75, 90, 105, 120];
 const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
 const scores = ['no', 'float', 'pass'];
@@ -35,14 +40,23 @@ const starter = {
     { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
-  audit: ['Calendar duration display fixed']
+  audit: ['Overlay calendar and overlap blocking added']
 };
 
 function lessonDay(lesson) { return lesson?.day || 'Tuesday'; }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function groups(state) { return state.framework?.groupTemplates || []; }
 function groupFor(state, id) { return groups(state).find(g => g.id === id); }
-function addMinutes(time, minutes) { const [h, m] = String(time || '09:00').split(':').map(Number); const total = (h * 60) + m + (Number(minutes) || 0); const hh = String(Math.floor(total / 60)).padStart(2, '0'); const mm = String(total % 60).padStart(2, '0'); return `${hh}:${mm}`; }
+function addMinutes(time, minutes) { return formatTime(timeToMinutes(time) + (Number(minutes) || 0)); }
+function lessonInterval(lesson) { const start = timeToMinutes(lesson.time); const end = start + (Number(lesson.duration) || 30); return { start, end }; }
+function lessonOverlaps(lessons, candidate, ignoreId = '') {
+  const a = lessonInterval(candidate);
+  return lessons.some(existing => {
+    if (existing.id === ignoreId || lessonDay(existing) !== lessonDay(candidate)) return false;
+    const b = lessonInterval(existing);
+    return a.start < b.end && a.end > b.start;
+  });
+}
 function lessonProgramme(lesson) {
   if (lesson?.programme) return lesson.programme;
   const text = `${lesson?.school || ''} ${lesson?.name || ''} ${lesson?.year || ''}`.toLowerCase();
@@ -173,28 +187,27 @@ function Timetable({ state, update }) {
   function setFilter(nextFilter) { update({ timetableFilter: nextFilter, draft: null }); }
   function openDraft(time) { const first = templateOptions[0]?.id || ''; const programme = filter === 'All' ? (state.framework.area || 'School Swimming') : filter; update({ draft: { day, time, duration: 30, programme, school: defaultSchoolForProgramme(programme), year: 'Year 5', className: '', coach: '', name: 'New Lesson', groupTemplateId: first, pastedNames: '', mode: state.framework.mode } }); }
   function draft(key, value) { update({ draft: { ...state.draft, [key]: value, ...(key === 'programme' ? { school: defaultSchoolForProgramme(value) } : {}) } }); }
-  function createLesson() { if (!state.draft) return; const id = 'l' + Date.now(); const stage = firstStageForGroup(state, state.draft.groupTemplateId); const newLearners = createLearnersFromText(state.draft.pastedNames, id, stage); const lesson = { ...state.draft }; delete lesson.pastedNames; update({ lessons: [...state.lessons, { id, ...lesson }], learners: [...state.learners, ...newLearners], active: id, draft: null, audit: [`Created ${state.draft.name} with ${newLearners.length} learner(s)`, ...state.audit] }); }
+  function createLesson() { if (!state.draft) return; const id = 'l' + Date.now(); const stage = firstStageForGroup(state, state.draft.groupTemplateId); const newLearners = createLearnersFromText(state.draft.pastedNames, id, stage); const lesson = { ...state.draft }; delete lesson.pastedNames; const candidate = { id, ...lesson }; if (lessonOverlaps(state.lessons, candidate, id)) { alert('This lesson would overlap another lesson. Choose a different time or shorter duration.'); return; } update({ lessons: [...state.lessons, candidate], learners: [...state.learners, ...newLearners], active: id, draft: null, audit: [`Created ${state.draft.name} with ${newLearners.length} learner(s)`, ...state.audit] }); }
   function edit(id, key, value) {
+    const existing = state.lessons.find(l => l.id === id);
+    const candidate = { ...existing, [key]: value };
+    if (['day', 'time', 'duration'].includes(key) && lessonOverlaps(state.lessons, candidate, id)) { alert('That would overlap the next lesson. Adjust the time or duration first.'); return; }
     if (key === 'groupTemplateId') {
       const groupName = groupFor(state, value)?.name || 'new group';
-      update({
-        lessons: state.lessons.map(l => l.id === id ? { ...l, groupTemplateId: value } : l),
-        learners: state.learners.map(p => p.lesson === id ? moveLearnerToGroupStage(state, p, value) : p),
-        audit: [`Moved lesson to ${groupName} and updated learner stages`, ...state.audit]
-      });
+      update({ lessons: state.lessons.map(l => l.id === id ? { ...l, groupTemplateId: value } : l), learners: state.learners.map(p => p.lesson === id ? moveLearnerToGroupStage(state, p, value) : p), audit: [`Moved lesson to ${groupName} and updated learner stages`, ...state.audit] });
       return;
     }
     update({ lessons: state.lessons.map(l => l.id === id ? { ...l, [key]: value } : l) });
   }
   function move(id, slots) { const lesson = state.lessons.find(l => l.id === id); const i = timeSlots.indexOf(lesson?.time); edit(id, 'time', timeSlots[clamp(i + slots, 0, timeSlots.length - 1)] || lesson?.time || '09:00'); }
   function resize(id, delta) { const lesson = state.lessons.find(l => l.id === id); edit(id, 'duration', clamp((Number(lesson?.duration) || 30) + delta, 15, 120)); }
-  function duplicate(lesson) { const id = 'l' + Date.now(); update({ lessons: [...state.lessons, { ...lesson, id, name: lesson.name + ' copy' }], audit: [`Duplicated ${lesson.name}`, ...state.audit] }); }
+  function duplicate(lesson) { const id = 'l' + Date.now(); const copy = { ...lesson, id, name: lesson.name + ' copy' }; if (lessonOverlaps(state.lessons, copy, id)) { alert('The copied lesson would overlap another lesson. Move the original or change the time first.'); return; } update({ lessons: [...state.lessons, copy], audit: [`Duplicated ${lesson.name}`, ...state.audit] }); }
   function removeLesson(id) { const lesson = state.lessons.find(l => l.id === id); update({ lessons: state.lessons.filter(l => l.id !== id), learners: state.learners.filter(p => p.lesson !== id), audit: [`Deleted ${lesson?.name || 'lesson'}`, ...state.audit] }); }
   return <>
     <section className='hero'><h1>Master timetable</h1><p>Keep everything in one calendar, then filter by programme when you need a cleaner view.</p></section>
     <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => setDay(d)}>{d} <span className='pill'>{dayCounts[d]}</span></button>)}</div>
     <section className='card'><h2>Calendar filter</h2><p className='muted'>Use All as your working diary. Use a programme filter when you only want school swimming, evening lessons or private lessons.</p><div className='tabs'>{programmeFilters.map(p => <button key={p} className={filter === p ? 'on' : ''} onClick={() => setFilter(p)}>{p}</button>)}</div></section>
-    <div className='calendar-toolbar card'><div><h2>{filter === 'All' ? `${day} master calendar` : `${day} · ${filter}`}</h2><p className='muted'>Lesson cards show programme, school/venue, class and group so reports can still be separated later.</p></div><button className='btn org' onClick={() => openDraft('09:00')}>+ Create lesson</button></div>
+    <div className='calendar-toolbar card'><div><h2>{filter === 'All' ? `${day} master calendar` : `${day} · ${filter}`}</h2><p className='muted'>Lesson cards span across the fixed time grid. Overlaps are blocked.</p></div><button className='btn org' onClick={() => openDraft('08:00')}>+ Create lesson</button></div>
     {state.draft && <section className='card draft-panel'><h2>Create lesson on {state.draft.day} at {state.draft.time}</h2><div className='grid'><Select label='Programme' value={state.draft.programme || 'School Swimming'} onChange={v => draft('programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Field label='Lesson name' value={state.draft.name} onChange={v => draft('name', v)} /><Field label='School / Venue' value={state.draft.school} onChange={v => draft('school', v)} /><Field label='Year / Class' value={state.draft.year} onChange={v => draft('year', v)} /><Field label='Class / SEN' value={state.draft.className} onChange={v => draft('className', v)} /><Field label='Coach' value={state.draft.coach} onChange={v => draft('coach', v)} /><Select label='Group template' value={state.draft.groupTemplateId || ''} onChange={v => draft('groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={state.draft.duration} onChange={v => draft('duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Select label='Mode' value={state.draft.mode} onChange={v => draft('mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div><div className='field'><label>Paste learners into this lesson</label><textarea value={state.draft.pastedNames || ''} onChange={e => draft('pastedNames', e.target.value)} placeholder={'Derek Jones\nMia Smith\nAlex Patel'} /></div><div className='event-actions'><button className='btn org' onClick={createLesson}>Create lesson</button><button className='btn' onClick={() => update({ draft: null })}>Cancel</button></div></section>}
     <section className='calendar-shell'>{timeSlots.map(t => { const items = sorted.filter(l => l.time === t); return <div className='calendar-row' key={t}><button className='calendar-time' onClick={() => openDraft(t)}>{t}</button><div className='calendar-slot' onClick={() => !items.length && openDraft(t)}>{items.length === 0 && <span className='empty-slot'>Tap to add lesson</span>}{items.map(l => <CalendarEvent key={l.id} state={state} lesson={l} open={() => update({ active: l.id, step: 'register' })} move={move} resize={resize} duplicate={duplicate} remove={removeLesson} />)}</div></div>; })}</section>
     {sorted.length === 0 && <section className='card'><h2>No lessons on {day} for {filter}</h2><p className='muted'>Switch to All, pick another programme, or add a new lesson.</p></section>}
@@ -204,10 +217,11 @@ function Timetable({ state, update }) {
 
 function CalendarEvent({ state, lesson, open, move, resize, duplicate, remove }) {
   const endTime = addMinutes(lesson.time, lesson.duration || 30);
-  return <div className='calendar-event' onClick={e => e.stopPropagation()}><div className='event-head'><strong>{lesson.name}</strong><button className='btn' onClick={open}>Open</button></div><p>{lesson.school} · {lesson.year}{lesson.className ? ` · ${lesson.className}` : ''}</p><span className='pill'>{lessonProgramme(lesson)}</span><span className='pill'>{lesson.time}–{endTime}</span><span className='pill'>{groupFor(state, lesson.groupTemplateId)?.name || 'No template'}</span><span className='pill'>{lesson.duration || 30} mins</span><div className='event-actions'><button className='btn' onClick={() => move(lesson.id, -1)}>↑ 15</button><button className='btn' onClick={() => move(lesson.id, 1)}>↓ 15</button><button className='btn' onClick={() => resize(lesson.id, -15)}>-15m</button><button className='btn' onClick={() => resize(lesson.id, 15)}>+15m</button><button className='btn' onClick={() => duplicate(lesson)}>Duplicate</button><button className='btn' onClick={() => remove(lesson.id)}>Delete</button></div></div>;
+  const blockHeight = Math.max(44, ((Number(lesson.duration) || 30) / 15) * 50 - 12);
+  return <div className='calendar-event' style={{ height: blockHeight }} onClick={e => e.stopPropagation()}><div className='event-head'><strong>{lesson.name}</strong><button className='btn' onClick={open}>Open</button></div><p>{lesson.school} · {lesson.year}{lesson.className ? ` · ${lesson.className}` : ''}</p><span className='pill'>{lessonProgramme(lesson)}</span><span className='pill'>{lesson.time}–{endTime}</span><span className='pill'>{groupFor(state, lesson.groupTemplateId)?.name || 'No template'}</span><span className='pill'>{lesson.duration || 30} mins</span><div className='event-actions'><button className='btn' onClick={() => move(lesson.id, -1)}>↑ 15</button><button className='btn' onClick={() => move(lesson.id, 1)}>↓ 15</button><button className='btn' onClick={() => resize(lesson.id, -15)}>-15m</button><button className='btn' onClick={() => resize(lesson.id, 15)}>+15m</button><button className='btn' onClick={() => duplicate(lesson)}>Duplicate</button><button className='btn' onClick={() => remove(lesson.id)}>Delete</button></div></div>;
 }
 function LessonEditCard({ state, lesson, edit, templateOptions }) {
-  return <div className='card'><h3>{lesson.time} · {lesson.name}</h3><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => edit(lesson.id, 'programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Select label='Day' value={lessonDay(lesson)} onChange={v => edit(lesson.id, 'day', v)} options={days.map(d => ({ value: d, label: d }))} /><Field label='Time' value={lesson.time} onChange={v => edit(lesson.id, 'time', v)} /><Select label='Group template' value={lesson.groupTemplateId || ''} onChange={v => edit(lesson.id, 'groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={lesson.duration || 30} onChange={v => edit(lesson.id, 'duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Field label='School / Venue' value={lesson.school} onChange={v => edit(lesson.id, 'school', v)} /><Field label='Year / Class' value={lesson.year} onChange={v => edit(lesson.id, 'year', v)} /><Field label='Lesson name' value={lesson.name} onChange={v => edit(lesson.id, 'name', v)} /><Field label='Coach' value={lesson.coach || ''} onChange={v => edit(lesson.id, 'coach', v)} /><Field label='Class / SEN' value={lesson.className || ''} onChange={v => edit(lesson.id, 'className', v)} /><Select label='Mode' value={lesson.mode} onChange={v => edit(lesson.id, 'mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div>;
+  return <div className='card'><h3>{lesson.time} · {lesson.name}</h3><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => edit(lesson.id, 'programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Select label='Day' value={lessonDay(lesson)} onChange={v => edit(lesson.id, 'day', v)} options={days.map(d => ({ value: d, label: d }))} /><Select label='Time' value={lesson.time} onChange={v => edit(lesson.id, 'time', v)} options={timeSlots.map(x => ({ value: x, label: x }))} /><Select label='Group template' value={lesson.groupTemplateId || ''} onChange={v => edit(lesson.id, 'groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={lesson.duration || 30} onChange={v => edit(lesson.id, 'duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Field label='School / Venue' value={lesson.school} onChange={v => edit(lesson.id, 'school', v)} /><Field label='Year / Class' value={lesson.year} onChange={v => edit(lesson.id, 'year', v)} /><Field label='Lesson name' value={lesson.name} onChange={v => edit(lesson.id, 'name', v)} /><Field label='Coach' value={lesson.coach || ''} onChange={v => edit(lesson.id, 'coach', v)} /><Field label='Class / SEN' value={lesson.className || ''} onChange={v => edit(lesson.id, 'className', v)} /><Select label='Mode' value={lesson.mode} onChange={v => edit(lesson.id, 'mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div>;
 }
 
 function Lesson({ state, update, lesson }) {
