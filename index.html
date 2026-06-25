@@ -63,6 +63,33 @@
         color: #64748b;
         text-align: right;
       }
+      .cert-control-panel {
+        border: 1px solid #d9dee8;
+        border-left: 4px solid #f97316;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 10px;
+        background: #f8fafc;
+      }
+      .cert-control-panel h3 {
+        margin-bottom: 8px;
+      }
+      .cert-control-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+      }
+      .cert-control-grid button {
+        border: 1px solid #d9dee8;
+        background: #fff;
+        color: #0f172a;
+        border-radius: 4px;
+        padding: 9px 8px;
+        font-weight: 1000;
+      }
+      .cert-control-grid button:hover {
+        border-color: #f97316;
+      }
       @media (max-width: 850px) {
         .rail button:nth-child(2):after {
           content: 'Timetable' !important;
@@ -160,6 +187,7 @@
           award: 'Stage 1',
           font: 'Arial',
           fontSize: 36,
+          dateFontSize: 20,
           colour: '#1e3a8a',
           nameX: 50,
           nameY: 43,
@@ -198,6 +226,9 @@
           return { name: learner.name || 'Unnamed learner', award: `${stage}${nc}` };
         });
       }
+      function clampCert(value, min, max) {
+        return Math.max(min, Math.min(max, Number(value) || 0));
+      }
       function buildCertificateUploader(target) {
         if (!target || target.dataset.certBuilder === 'yes') return;
         target.dataset.certBuilder = 'yes';
@@ -206,23 +237,36 @@
         card.className = 'card';
         card.innerHTML = `
           <h2>Certificate upload + placement builder</h2>
-          <p class="muted">Upload a blank certificate, choose the award/stage, then position the printed learner name and date.</p>
+          <p class="muted">Upload a blank certificate, choose the award/stage, then use simple buttons to move and resize the printed learner name and date.</p>
           <div class="grid2">
             <div class="card">
               <div class="field"><label>Upload certificate image</label><input data-cert="file" type="file" accept="image/*,.pdf" /></div>
               <div class="field"><label>Template name</label><input data-cert="name" /></div>
               <div class="field"><label>Award / stage</label><select data-cert="award"><option>Stage 1</option><option>Stage 2</option><option>Stage 3</option><option>Stage 4</option><option>Stage 5</option><option>Stage 6</option><option>Self Rescue Award</option><option>National Curriculum</option></select></div>
-              <div class="grid2">
-                <div class="field"><label>Name X %</label><input data-cert="nameX" type="number" min="0" max="100" /></div>
-                <div class="field"><label>Name Y %</label><input data-cert="nameY" type="number" min="0" max="100" /></div>
-                <div class="field"><label>Date X %</label><input data-cert="dateX" type="number" min="0" max="100" /></div>
-                <div class="field"><label>Date Y %</label><input data-cert="dateY" type="number" min="0" max="100" /></div>
-              </div>
-              <div class="grid2">
-                <div class="field"><label>Font</label><select data-cert="font"><option>Arial</option><option>Georgia</option><option>Trebuchet MS</option><option>Comic Sans MS</option><option>Audiowide</option></select></div>
-                <div class="field"><label>Font size</label><input data-cert="fontSize" type="number" min="12" max="90" /></div>
-              </div>
+              <div class="field"><label>Font</label><select data-cert="font"><option>Arial</option><option>Georgia</option><option>Trebuchet MS</option><option>Comic Sans MS</option><option>Audiowide</option></select></div>
               <div class="field"><label>Text colour</label><input data-cert="colour" type="color" /></div>
+              <div class="cert-control-panel">
+                <h3>Move learner name</h3>
+                <div class="cert-control-grid">
+                  <button data-cert-move="nameY" data-step="-1">Name up</button>
+                  <button data-cert-move="nameY" data-step="1">Name down</button>
+                  <button data-cert-move="nameX" data-step="-1">Name left</button>
+                  <button data-cert-move="nameX" data-step="1">Name right</button>
+                  <button data-cert-move="fontSize" data-step="-2">Name smaller</button>
+                  <button data-cert-move="fontSize" data-step="2">Name bigger</button>
+                </div>
+              </div>
+              <div class="cert-control-panel">
+                <h3>Move date</h3>
+                <div class="cert-control-grid">
+                  <button data-cert-move="dateY" data-step="-1">Date up</button>
+                  <button data-cert-move="dateY" data-step="1">Date down</button>
+                  <button data-cert-move="dateX" data-step="-1">Date left</button>
+                  <button data-cert-move="dateX" data-step="1">Date right</button>
+                  <button data-cert-move="dateFontSize" data-step="-1">Date smaller</button>
+                  <button data-cert-move="dateFontSize" data-step="1">Date bigger</button>
+                </div>
+              </div>
               <button class="btn org" data-cert="save">Save certificate template</button>
             </div>
             <div class="card">
@@ -239,7 +283,7 @@
         target.appendChild(card);
         function get(key) { return card.querySelector(`[data-cert="${key}"]`); }
         function syncFields() {
-          ['name','award','font','fontSize','colour','nameX','nameY','dateX','dateY'].forEach(key => { const el = get(key); if (el) el.value = data[key]; });
+          ['name','award','font','colour'].forEach(key => { const el = get(key); if (el) el.value = data[key]; });
         }
         function renderEligibility() {
           const holder = get('eligible');
@@ -267,7 +311,7 @@
             date.style.left = data.dateX + '%';
             date.style.top = data.dateY + '%';
             date.style.fontFamily = data.font;
-            date.style.fontSize = Math.max(14, Number(data.fontSize) * 0.55) + 'px';
+            date.style.fontSize = data.dateFontSize + 'px';
             date.style.color = data.colour;
             preview.appendChild(name);
             preview.appendChild(date);
@@ -275,7 +319,7 @@
           renderEligibility();
         }
         function updateData(key, value) {
-          data[key] = ['fontSize','nameX','nameY','dateX','dateY'].includes(key) ? Number(value) : value;
+          data[key] = ['fontSize','dateFontSize','nameX','nameY','dateX','dateY'].includes(key) ? Number(value) : value;
           saveCertTemplate(data);
           renderPreview();
         }
@@ -286,6 +330,15 @@
           if (!key || ['file','save','preview','eligible'].includes(key)) return;
           el.addEventListener('input', () => updateData(key, el.value));
           el.addEventListener('change', () => updateData(key, el.value));
+        });
+        card.querySelectorAll('[data-cert-move]').forEach(button => {
+          button.addEventListener('click', () => {
+            const key = button.getAttribute('data-cert-move');
+            const step = Number(button.getAttribute('data-step')) || 0;
+            const min = key.toLowerCase().includes('size') ? 8 : 0;
+            const max = key.toLowerCase().includes('size') ? 120 : 100;
+            updateData(key, clampCert((data[key] ?? certDefaults()[key]) + step, min, max));
+          });
         });
         get('file').addEventListener('change', event => {
           const file = event.target.files?.[0];
