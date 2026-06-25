@@ -307,6 +307,13 @@
           return acc;
         }, {});
       }
+      function printableCertificateItems() {
+        const templates = loadCertTemplates();
+        return certificateGenerationRows()
+          .filter(row => row.template === 'Ready')
+          .map(row => ({ ...row, templateData: templates.find(template => template.award === row.award && template.image) }))
+          .filter(row => row.templateData);
+      }
       function clampCert(value, min, max) {
         return Math.max(min, Math.min(max, Number(value) || 0));
       }
@@ -328,8 +335,48 @@
           <div class="certificate-builder-text" style="left:${template.nameX}%;top:${template.nameY}%;font-family:${escapeHtml(template.font)};font-size:${template.fontSize}px;color:${template.colour};">Alex Smith</div>
           ${dateHtml}`;
       }
+      function printablePageHtml(item) {
+        const template = item.templateData;
+        const isPdf = template.fileType === 'application/pdf' || String(template.image).startsWith('data:application/pdf');
+        const file = isPdf
+          ? `<object class="cert-bg" data="${template.image}" type="application/pdf"></object>`
+          : `<img class="cert-bg" src="${template.image}" alt="${escapeHtml(item.award)} certificate" />`;
+        const dateHtml = template.showDate ? `<div class="print-text" style="left:${template.dateX}%;top:${template.dateY}%;font-family:${escapeHtml(template.font)};font-size:${template.dateFontSize}px;color:${template.colour};">${new Date().toLocaleDateString('en-GB')}</div>` : '';
+        return `<section class="cert-page">
+          ${file}
+          <div class="print-text" style="left:${template.nameX}%;top:${template.nameY}%;font-family:${escapeHtml(template.font)};font-size:${template.fontSize}px;color:${template.colour};">${escapeHtml(item.learner)}</div>
+          ${dateHtml}
+        </section>`;
+      }
+      function openCertificatePrintPack() {
+        const items = printableCertificateItems();
+        if (!items.length) {
+          alert('No certificates are ready to print yet. Add templates for the awards shown as missing first.');
+          return;
+        }
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>StageFlow Certificates</title><style>
+          @page { size: A4 landscape; margin: 0; }
+          * { box-sizing: border-box; }
+          body { margin: 0; background: #111827; font-family: Arial, sans-serif; }
+          .toolbar { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 10px 14px; background: #0f172a; color: #fff; font-weight: 900; }
+          .toolbar button { border: 0; border-radius: 4px; padding: 10px 14px; font-weight: 900; background: #f97316; color: white; }
+          .cert-page { position: relative; width: 297mm; height: 210mm; margin: 0 auto; background: white; overflow: hidden; page-break-after: always; }
+          .cert-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border: 0; }
+          .print-text { position: absolute; transform: translate(-50%, -50%); font-weight: 900; white-space: nowrap; text-align: center; text-shadow: 0 1px 2px rgba(255,255,255,.85); }
+          @media print { body { background: white; } .toolbar { display: none; } .cert-page { margin: 0; } }
+        </style></head><body><div class="toolbar"><span>${items.length} certificate(s) ready</span><button onclick="window.print()">Print / save as PDF</button></div>${items.map(printablePageHtml).join('')}</body></html>`;
+        const win = window.open('', '_blank');
+        if (!win) {
+          alert('Pop-up blocked. Allow pop-ups for this site to open the printable certificate batch.');
+          return;
+        }
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+      }
       function generationPreviewHtml() {
         const rows = certificateGenerationRows();
+        const readyCount = rows.filter(row => row.template === 'Ready').length;
         const summary = certificateSummary(rows);
         const summaryHtml = Object.keys(summary).length
           ? `<div class="certificate-summary-grid">${Object.entries(summary).map(([award, count]) => `<div class="certificate-summary-card">${count} × ${escapeHtml(award)}<small>${rows.filter(row => row.award === award && row.template === 'Missing template').length ? 'Needs template' : 'Ready'}</small></div>`).join('')}</div>`
@@ -337,7 +384,7 @@
         const rowsHtml = rows.length
           ? rows.map(row => `<div class="certificate-rule-row"><span>${escapeHtml(row.learner)} — ${escapeHtml(row.kind)}</span><span class="${row.template === 'Missing template' ? 'cert-missing' : ''}">${escapeHtml(row.award)} · ${escapeHtml(row.template)}</span></div>`).join('')
           : '';
-        return `<section class="card"><h3>Certificate generation preview</h3><p class="muted">This is the check before exporting. Each learner gets their highest stage certificate only. National Curriculum appears as a separate extra certificate.</p>${summaryHtml}${rowsHtml}</section>`;
+        return `<section class="card"><h3>Certificate generation preview</h3><p class="muted">This is the check before exporting. Each learner gets their highest stage certificate only. National Curriculum appears as a separate extra certificate.</p>${summaryHtml}${readyCount ? `<button class="btn org" data-cert-action="printBatch">Open printable certificate batch (${readyCount})</button>` : ''}${rowsHtml}</section>`;
       }
       function mountCertificateManager() {
         const certCard = Array.from(document.querySelectorAll('.card')).find(card => card.querySelector('h2')?.textContent?.trim() === 'Certificate templates');
@@ -425,6 +472,9 @@
           if (action === 'save') {
             setActiveCertId('');
             renderCertificateManager(certCard);
+          }
+          if (action === 'printBatch') {
+            openCertificatePrintPack();
           }
           if (move && currentId) {
             const step = Number(button.getAttribute('data-step')) || 0;
