@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/app.css';
-import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria } from './data/demoData.js';
+import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -11,6 +11,7 @@ const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
 const scores = ['no', 'float', 'pass'];
 const distances = ['0m', '5m', '10m', '15m', '20m', '25m', '50m', '100m'];
+const programmeFilters = ['All', ...(programmeAreas || ['School Swimming', 'Evening Swim Lessons', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'])];
 
 const starter = {
   screen: 'home',
@@ -20,7 +21,8 @@ const starter = {
   active: 'l1',
   draft: null,
   currentDay: 'Tuesday',
-  lessons: demoLessons.map(l => ({ day: 'Tuesday', duration: 30, className: '', coach: '', groupTemplateId: 'g1', ...l })),
+  timetableFilter: 'All',
+  lessons: demoLessons.map(l => ({ day: 'Tuesday', duration: 30, className: '', coach: '', groupTemplateId: 'g1', programme: l.programme || demoFramework.area || 'School Swimming', ...l })),
   learners: demoLearners,
   framework: demoFramework,
   certificates: [
@@ -33,13 +35,27 @@ const starter = {
     { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
-  audit: ['Group movement auto-pass added']
+  audit: ['Master calendar programme filter added']
 };
 
 function lessonDay(lesson) { return lesson?.day || 'Tuesday'; }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function groups(state) { return state.framework?.groupTemplates || []; }
 function groupFor(state, id) { return groups(state).find(g => g.id === id); }
+function lessonProgramme(lesson) {
+  if (lesson?.programme) return lesson.programme;
+  const text = `${lesson?.school || ''} ${lesson?.name || ''} ${lesson?.year || ''}`.toLowerCase();
+  if (text.includes('evening')) return 'Evening Swim Lessons';
+  if (text.includes('private')) return 'Private Lessons';
+  if (text.includes('gym')) return 'Gymnastics';
+  if (text.includes('pe')) return 'School PE';
+  return 'School Swimming';
+}
+function visibleLessonsForDay(state, day) {
+  const filter = state.timetableFilter || 'All';
+  return [...state.lessons].filter(l => lessonDay(l) === day && (filter === 'All' || lessonProgramme(l) === filter));
+}
+function defaultSchoolForProgramme(programme) { return programme === 'Evening Swim Lessons' ? 'Evening Swim Lessons' : programme === 'Private Lessons' ? 'Private Client' : 'New School'; }
 function firstStageForGroup(state, groupId) {
   const group = groupFor(state, groupId);
   return group?.stages?.[0] || state.framework?.stages?.[0] || 'Stage 1';
@@ -58,27 +74,32 @@ function createLearnersFromText(text, lessonId, stage) {
 }
 function distanceNumber(value) { return parseInt(String(value || '0').replace('m', ''), 10) || 0; }
 function allCriteria(state) { return Object.values(state.framework?.criteria || stageCriteria || {}).flat(); }
+function criteriaDistanceMatch(criteria, stroke, metres) {
+  const text = criteria.toLowerCase();
+  const match = text.match(/(\d+)\s*m/);
+  if (!match) return false;
+  const required = Number(match[1]);
+  if (required > metres) return false;
+  const frontLike = text.includes('front') || text.includes('crawl');
+  const backLike = text.includes('back') || text.includes('backstroke');
+  const anyStroke = text.includes('choice of stroke') || text.includes('optional') || text.includes('distance achieved');
+  return stroke === 'front' ? frontLike || anyStroke : backLike || anyStroke;
+}
 function applyDistanceAutoPass(state, currentResults, stroke, metres) {
   const next = { ...(currentResults || {}) };
-  allCriteria(state).forEach(criteria => {
-    const text = criteria.toLowerCase();
-    const match = text.match(/(\d+)m/);
-    if (!match) return;
-    const required = Number(match[1]);
-    const isFront = stroke === 'front' && text.includes('front');
-    const isBack = stroke === 'back' && text.includes('back');
-    if ((isFront || isBack) && required <= metres) next[criteria] = 'pass';
-  });
+  allCriteria(state).forEach(criteria => { if (criteriaDistanceMatch(criteria, stroke, metres)) next[criteria] = 'pass'; });
   return next;
 }
 function getDistanceFromCriteria(criteria) {
   const text = criteria.toLowerCase();
-  const match = text.match(/(\d+)m/);
+  const match = text.match(/(\d+)\s*m/);
   if (!match) return null;
-  if (text.includes('front')) return { stroke: 'front', metres: Number(match[1]) };
-  if (text.includes('back')) return { stroke: 'back', metres: Number(match[1]) };
+  if (text.includes('front') || text.includes('crawl')) return { stroke: 'front', metres: Number(match[1]) };
+  if (text.includes('back') || text.includes('backstroke')) return { stroke: 'back', metres: Number(match[1]) };
+  if (text.includes('choice of stroke') || text.includes('optional') || text.includes('distance achieved')) return { stroke: 'front', metres: Number(match[1]) };
   return null;
 }
+function stageSortValue(stage) { const match = String(stage || '').match(/Stage\s*(\d+)/i); if (match) return Number(match[1]); if (String(stage).toLowerCase().includes('self rescue')) return 900; return 800; }
 function stageIndex(state, stage) { return (state.framework?.stages || []).indexOf(stage); }
 function criteriaBeforeStage(state, stage) {
   const stages = state.framework?.stages || [];
@@ -135,7 +156,7 @@ function Home({ state, update }) {
   const percent = Math.round((done / health.length) * 100);
   return <>
     <section className='hero'><p>StageFlow MVP</p><h1>Today starts from the timetable.</h1><p>Open the lesson, register, assess, save, export.</p></section>
-    {next ? <section className='card lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {next.school} · {next.year} · {next.mode}</p><span className='pill'>{groupFor(state, next.groupTemplateId)?.name || 'No group template'}</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open lesson</button></section> : <section className='card'><h2>No lessons yet</h2><p className='muted'>Go to Timetable and create your first session.</p></section>}
+    {next ? <section className='card lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupFor(state, next.groupTemplateId)?.name || 'No group template'}</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open lesson</button></section> : <section className='card'><h2>No lessons yet</h2><p className='muted'>Go to Timetable and create your first session.</p></section>}
     <div className='grid'><div className='card'><h2>{state.lessons.length}</h2><p className='muted'>Lessons</p></div><div className='card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
     <section className='card'><h2>Priority 1 stability</h2><p className='muted'>{percent}% checked inside the app</p><button className='btn org' onClick={() => update({ screen: 'health' })}>Open health check</button></section>
   </>;
@@ -143,12 +164,14 @@ function Home({ state, update }) {
 
 function Timetable({ state, update }) {
   const day = state.currentDay || 'Tuesday';
+  const filter = state.timetableFilter || 'All';
   const templateOptions = groups(state);
-  const sorted = [...state.lessons].filter(l => lessonDay(l) === day).sort((a, b) => String(a.time).localeCompare(String(b.time)));
-  const dayCounts = days.reduce((acc, d) => ({ ...acc, [d]: state.lessons.filter(l => lessonDay(l) === d).length }), {});
+  const sorted = visibleLessonsForDay(state, day).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  const dayCounts = days.reduce((acc, d) => ({ ...acc, [d]: visibleLessonsForDay(state, d).length }), {});
   function setDay(nextDay) { update({ currentDay: nextDay, draft: null }); }
-  function openDraft(time) { const first = templateOptions[0]?.id || ''; update({ draft: { day, time, duration: 30, school: 'New School', year: 'Year 5', className: '', coach: '', name: 'New Lesson', groupTemplateId: first, pastedNames: '', mode: state.framework.mode } }); }
-  function draft(key, value) { update({ draft: { ...state.draft, [key]: value } }); }
+  function setFilter(nextFilter) { update({ timetableFilter: nextFilter, draft: null }); }
+  function openDraft(time) { const first = templateOptions[0]?.id || ''; const programme = filter === 'All' ? (state.framework.area || 'School Swimming') : filter; update({ draft: { day, time, duration: 30, programme, school: defaultSchoolForProgramme(programme), year: 'Year 5', className: '', coach: '', name: 'New Lesson', groupTemplateId: first, pastedNames: '', mode: state.framework.mode } }); }
+  function draft(key, value) { update({ draft: { ...state.draft, [key]: value, ...(key === 'programme' ? { school: defaultSchoolForProgramme(value) } : {}) } }); }
   function createLesson() { if (!state.draft) return; const id = 'l' + Date.now(); const stage = firstStageForGroup(state, state.draft.groupTemplateId); const newLearners = createLearnersFromText(state.draft.pastedNames, id, stage); const lesson = { ...state.draft }; delete lesson.pastedNames; update({ lessons: [...state.lessons, { id, ...lesson }], learners: [...state.learners, ...newLearners], active: id, draft: null, audit: [`Created ${state.draft.name} with ${newLearners.length} learner(s)`, ...state.audit] }); }
   function edit(id, key, value) {
     if (key === 'groupTemplateId') {
@@ -167,21 +190,22 @@ function Timetable({ state, update }) {
   function duplicate(lesson) { const id = 'l' + Date.now(); update({ lessons: [...state.lessons, { ...lesson, id, name: lesson.name + ' copy' }], audit: [`Duplicated ${lesson.name}`, ...state.audit] }); }
   function removeLesson(id) { const lesson = state.lessons.find(l => l.id === id); update({ lessons: state.lessons.filter(l => l.id !== id), learners: state.learners.filter(p => p.lesson !== id), audit: [`Deleted ${lesson?.name || 'lesson'}`, ...state.audit] }); }
   return <>
-    <section className='hero'><h1>Timetable</h1><p>Choose a day, tap a time slot, pick a group template, paste names, then open it for register and assessment.</p></section>
+    <section className='hero'><h1>Master timetable</h1><p>Keep everything in one calendar, then filter by programme when you need a cleaner view.</p></section>
     <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => setDay(d)}>{d} <span className='pill'>{dayCounts[d]}</span></button>)}</div>
-    <div className='calendar-toolbar card'><div><h2>{day} school day</h2><p className='muted'>Sessions can be created with group template and learners in one go.</p></div><button className='btn org' onClick={() => openDraft('09:00')}>+ Create lesson</button></div>
-    {state.draft && <section className='card draft-panel'><h2>Create lesson on {state.draft.day} at {state.draft.time}</h2><div className='grid'><Field label='Lesson name' value={state.draft.name} onChange={v => draft('name', v)} /><Field label='School / Venue' value={state.draft.school} onChange={v => draft('school', v)} /><Field label='Year / Class' value={state.draft.year} onChange={v => draft('year', v)} /><Field label='Class / SEN' value={state.draft.className} onChange={v => draft('className', v)} /><Field label='Coach' value={state.draft.coach} onChange={v => draft('coach', v)} /><Select label='Group template' value={state.draft.groupTemplateId || ''} onChange={v => draft('groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={state.draft.duration} onChange={v => draft('duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Select label='Mode' value={state.draft.mode} onChange={v => draft('mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div><div className='field'><label>Paste learners into this lesson</label><textarea value={state.draft.pastedNames || ''} onChange={e => draft('pastedNames', e.target.value)} placeholder={'Derek Jones\nMia Smith\nAlex Patel'} /></div><div className='event-actions'><button className='btn org' onClick={createLesson}>Create lesson</button><button className='btn' onClick={() => update({ draft: null })}>Cancel</button></div></section>}
+    <section className='card'><h2>Calendar filter</h2><p className='muted'>Use All as your working diary. Use a programme filter when you only want school swimming, evening lessons or private lessons.</p><div className='tabs'>{programmeFilters.map(p => <button key={p} className={filter === p ? 'on' : ''} onClick={() => setFilter(p)}>{p}</button>)}</div></section>
+    <div className='calendar-toolbar card'><div><h2>{filter === 'All' ? `${day} master calendar` : `${day} · ${filter}`}</h2><p className='muted'>Lesson cards show programme, school/venue, class and group so reports can still be separated later.</p></div><button className='btn org' onClick={() => openDraft('09:00')}>+ Create lesson</button></div>
+    {state.draft && <section className='card draft-panel'><h2>Create lesson on {state.draft.day} at {state.draft.time}</h2><div className='grid'><Select label='Programme' value={state.draft.programme || 'School Swimming'} onChange={v => draft('programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Field label='Lesson name' value={state.draft.name} onChange={v => draft('name', v)} /><Field label='School / Venue' value={state.draft.school} onChange={v => draft('school', v)} /><Field label='Year / Class' value={state.draft.year} onChange={v => draft('year', v)} /><Field label='Class / SEN' value={state.draft.className} onChange={v => draft('className', v)} /><Field label='Coach' value={state.draft.coach} onChange={v => draft('coach', v)} /><Select label='Group template' value={state.draft.groupTemplateId || ''} onChange={v => draft('groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={state.draft.duration} onChange={v => draft('duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Select label='Mode' value={state.draft.mode} onChange={v => draft('mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div><div className='field'><label>Paste learners into this lesson</label><textarea value={state.draft.pastedNames || ''} onChange={e => draft('pastedNames', e.target.value)} placeholder={'Derek Jones\nMia Smith\nAlex Patel'} /></div><div className='event-actions'><button className='btn org' onClick={createLesson}>Create lesson</button><button className='btn' onClick={() => update({ draft: null })}>Cancel</button></div></section>}
     <section className='calendar-shell'>{timeSlots.map(t => { const items = sorted.filter(l => l.time === t); return <div className='calendar-row' key={t}><button className='calendar-time' onClick={() => openDraft(t)}>{t}</button><div className='calendar-slot' onClick={() => !items.length && openDraft(t)}>{items.length === 0 && <span className='empty-slot'>Tap to add lesson</span>}{items.map(l => <CalendarEvent key={l.id} state={state} lesson={l} open={() => update({ active: l.id, step: 'register' })} move={move} resize={resize} duplicate={duplicate} remove={removeLesson} />)}</div></div>; })}</section>
-    {sorted.length === 0 && <section className='card'><h2>No lessons on {day} yet</h2><p className='muted'>Tap a time slot above or use Create lesson to start building this day.</p></section>}
-    <section className='card'><h2>Edit {day} sessions</h2><div className='grid'>{sorted.map(l => <LessonEditCard key={l.id} state={state} lesson={l} edit={edit} templateOptions={templateOptions} />)}</div></section>
+    {sorted.length === 0 && <section className='card'><h2>No lessons on {day} for {filter}</h2><p className='muted'>Switch to All, pick another programme, or add a new lesson.</p></section>}
+    <section className='card'><h2>Edit {filter === 'All' ? day + ' sessions' : filter + ' sessions'}</h2><div className='grid'>{sorted.map(l => <LessonEditCard key={l.id} state={state} lesson={l} edit={edit} templateOptions={templateOptions} />)}</div></section>
   </>;
 }
 
 function CalendarEvent({ state, lesson, open, move, resize, duplicate, remove }) {
-  return <div className='calendar-event' style={{ minHeight: Math.max(44, ((Number(lesson.duration) || 30) / 15) * 36) }} onClick={e => e.stopPropagation()}><div className='event-head'><strong>{lesson.name}</strong><button className='btn' onClick={open}>Open</button></div><p>{lesson.school} · {lesson.year}{lesson.className ? ` · ${lesson.className}` : ''}</p><span className='pill'>{groupFor(state, lesson.groupTemplateId)?.name || 'No template'}</span><span className='pill'>{lesson.duration || 30} mins</span><div className='event-actions'><button className='btn' onClick={() => move(lesson.id, -1)}>↑ 15</button><button className='btn' onClick={() => move(lesson.id, 1)}>↓ 15</button><button className='btn' onClick={() => resize(lesson.id, -15)}>-15m</button><button className='btn' onClick={() => resize(lesson.id, 15)}>+15m</button><button className='btn' onClick={() => duplicate(lesson)}>Duplicate</button><button className='btn' onClick={() => remove(lesson.id)}>Delete</button></div></div>;
+  return <div className='calendar-event' style={{ minHeight: Math.max(44, ((Number(lesson.duration) || 30) / 15) * 36) }} onClick={e => e.stopPropagation()}><div className='event-head'><strong>{lesson.name}</strong><button className='btn' onClick={open}>Open</button></div><p>{lesson.school} · {lesson.year}{lesson.className ? ` · ${lesson.className}` : ''}</p><span className='pill'>{lessonProgramme(lesson)}</span><span className='pill'>{groupFor(state, lesson.groupTemplateId)?.name || 'No template'}</span><span className='pill'>{lesson.duration || 30} mins</span><div className='event-actions'><button className='btn' onClick={() => move(lesson.id, -1)}>↑ 15</button><button className='btn' onClick={() => move(lesson.id, 1)}>↓ 15</button><button className='btn' onClick={() => resize(lesson.id, -15)}>-15m</button><button className='btn' onClick={() => resize(lesson.id, 15)}>+15m</button><button className='btn' onClick={() => duplicate(lesson)}>Duplicate</button><button className='btn' onClick={() => remove(lesson.id)}>Delete</button></div></div>;
 }
 function LessonEditCard({ state, lesson, edit, templateOptions }) {
-  return <div className='card'><h3>{lesson.time} · {lesson.name}</h3><Select label='Day' value={lessonDay(lesson)} onChange={v => edit(lesson.id, 'day', v)} options={days.map(d => ({ value: d, label: d }))} /><Field label='Time' value={lesson.time} onChange={v => edit(lesson.id, 'time', v)} /><Select label='Group template' value={lesson.groupTemplateId || ''} onChange={v => edit(lesson.id, 'groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={lesson.duration || 30} onChange={v => edit(lesson.id, 'duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Field label='School / Venue' value={lesson.school} onChange={v => edit(lesson.id, 'school', v)} /><Field label='Year / Class' value={lesson.year} onChange={v => edit(lesson.id, 'year', v)} /><Field label='Lesson name' value={lesson.name} onChange={v => edit(lesson.id, 'name', v)} /><Field label='Coach' value={lesson.coach || ''} onChange={v => edit(lesson.id, 'coach', v)} /><Field label='Class / SEN' value={lesson.className || ''} onChange={v => edit(lesson.id, 'className', v)} /><Select label='Mode' value={lesson.mode} onChange={v => edit(lesson.id, 'mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div>;
+  return <div className='card'><h3>{lesson.time} · {lesson.name}</h3><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => edit(lesson.id, 'programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Select label='Day' value={lessonDay(lesson)} onChange={v => edit(lesson.id, 'day', v)} options={days.map(d => ({ value: d, label: d }))} /><Field label='Time' value={lesson.time} onChange={v => edit(lesson.id, 'time', v)} /><Select label='Group template' value={lesson.groupTemplateId || ''} onChange={v => edit(lesson.id, 'groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={lesson.duration || 30} onChange={v => edit(lesson.id, 'duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Field label='School / Venue' value={lesson.school} onChange={v => edit(lesson.id, 'school', v)} /><Field label='Year / Class' value={lesson.year} onChange={v => edit(lesson.id, 'year', v)} /><Field label='Lesson name' value={lesson.name} onChange={v => edit(lesson.id, 'name', v)} /><Field label='Coach' value={lesson.coach || ''} onChange={v => edit(lesson.id, 'coach', v)} /><Field label='Class / SEN' value={lesson.className || ''} onChange={v => edit(lesson.id, 'className', v)} /><Select label='Mode' value={lesson.mode} onChange={v => edit(lesson.id, 'mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div>;
 }
 
 function Lesson({ state, update, lesson }) {
@@ -189,7 +213,7 @@ function Lesson({ state, update, lesson }) {
   const present = kids.filter(p => p.att !== 'Absent');
   const selected = kids.find(p => p.id === state.selected) || present[0];
   return <>
-    <section className='hero'><p>{lessonDay(lesson)} · {lesson.time} · {lesson.school}</p><h1>{lesson.name}</h1><p>{groupFor(state, lesson.groupTemplateId)?.name || 'No group template'} · {lesson.mode}</p><div className='steps'><span className={state.step === 'register' ? 'on' : ''}>1 Register</span><span className={state.step === 'assess' ? 'on' : ''}>2 Assess</span><span className={state.step === 'save' ? 'on' : ''}>3 Save</span></div></section>
+    <section className='hero'><p>{lessonDay(lesson)} · {lesson.time} · {lessonProgramme(lesson)} · {lesson.school}</p><h1>{lesson.name}</h1><p>{groupFor(state, lesson.groupTemplateId)?.name || 'No group template'} · {lesson.mode}</p><div className='steps'><span className={state.step === 'register' ? 'on' : ''}>1 Register</span><span className={state.step === 'assess' ? 'on' : ''}>2 Assess</span><span className={state.step === 'save' ? 'on' : ''}>3 Save</span></div></section>
     {state.step === 'register' && <Register state={state} update={update} lesson={lesson} kids={kids} />}
     {state.step === 'assess' && (selected ? <Assess state={state} update={update} lesson={lesson} kids={present} selected={selected} /> : <section className='card'><h2>No present learners</h2><p className='muted'>Go back to the register and add or mark learners present.</p><button className='btn org' onClick={() => update({ step: 'register' })}>Back to register</button></section>)}
     {state.step === 'save' && <><section className='card'><h2>Lesson saved</h2><p>{present.length} present / late</p></section><div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Make changes</button><button className='btn org' onClick={() => update({ step: 'list', screen: 'timetable', audit: ['Saved lesson', ...state.audit] })}>Finish</button></div></>}
@@ -224,7 +248,7 @@ function Assess({ state, update, lesson, kids, selected }) {
       change({ res: { ...selected.res, [criteria]: value } });
     }
   }
-  const stageOptions = state.framework?.stages || [];
+  const stageOptions = [...(state.framework?.stages || [])].sort((a, b) => stageSortValue(a) - stageSortValue(b));
   const criteria = lesson.mode === 'National Curriculum only' ? [] : (state.framework.criteria?.[selected.stage] || stageCriteria[selected.stage] || []);
   return <><div className='grid2'><section className='card'>{kids.map(p => <button className={'btn ' + (p.id === selected.id ? 'org' : '')} key={p.id} onClick={() => update({ selected: p.id })}>{p.name}</button>)}</section><section className='card'><h2>{selected.name}</h2>{lesson.mode !== 'National Curriculum only' && <><Select label='Current working stage' value={selected.stage} onChange={setStage} options={stageOptions.map(x => ({ value: x, label: x }))} /><p className='muted'>You can move a learner freely. Moving up auto-passes all earlier stage criteria, but moving down does not erase evidence.</p></>}<div className='grid2'><Distance label='Distance front' value={selected.dist.front} onChange={v => setDistance('front', v)} /><Distance label='Distance back' value={selected.dist.back} onChange={v => setDistance('back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <div className='criteria' key={c}><b>{c}</b><div>{scores.map(v => <button className={'btn ' + (selected.res[c] === v ? 'org' : '')} key={v} onClick={() => score(c, v)}>{v}</button>)}</div></div>)}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc[item]} onChange={e => change({ nc: { ...selected.nc, [item]: e.target.checked } })} /> {item}</label>)}</section></div><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button><button className='btn org' onClick={() => update({ step: 'save' })}>Save lesson</button></div></>;
 }
@@ -244,6 +268,7 @@ function getHealthItems(state) {
     { label: 'Lessons are available', done: Array.isArray(state.lessons), detail: `${state.lessons?.length || 0} lesson(s) currently loaded.` },
     { label: 'Lesson fields are safe', done: state.lessons.every(l => l.id && l.day && l.time && l.name && l.duration), detail: 'Every lesson has id, day, time, name and duration.' },
     { label: 'Weekly day tabs are valid', done: days.includes(state.currentDay || 'Tuesday'), detail: `Selected day is ${state.currentDay || 'Tuesday'}.` },
+    { label: 'Programme filter is valid', done: programmeFilters.includes(state.timetableFilter || 'All'), detail: `Calendar filter is ${state.timetableFilter || 'All'}.` },
     { label: 'Framework stages exist', done: Array.isArray(state.framework?.stages) && state.framework.stages.length > 0, detail: `${state.framework?.stages?.length || 0} stage(s) available.` },
     { label: 'Group templates exist', done: groups(state).length > 0, detail: `${groups(state).length} group template(s) available.` },
     { label: 'Learner data is safe', done: Array.isArray(state.learners) && state.learners.every(p => p.id && p.name && p.lesson && p.stage && p.att), detail: `${state.learners?.length || 0} learner(s) currently loaded.` },
