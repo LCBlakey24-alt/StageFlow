@@ -78,6 +78,28 @@
           if (passButton && !passButton.className.includes('org')) passButton.click();
         });
       }
+      function stageOrderValue(text) {
+        const label = String(text || '').toLowerCase();
+        const match = label.match(/stage\s*(\d+)/);
+        if (match) return Number(match[1]);
+        if (label.includes('self rescue')) return 900;
+        if (label.includes('water safety')) return 901;
+        if (label.includes('award')) return 902;
+        return 800;
+      }
+      function reorderStageSelects() {
+        document.querySelectorAll('.field').forEach(field => {
+          const label = field.querySelector('label')?.textContent || '';
+          if (!label.toLowerCase().includes('current working stage')) return;
+          const select = field.querySelector('select');
+          if (!select || select.dataset.stageSorted === 'yes') return;
+          const current = select.value;
+          const options = Array.from(select.options).sort((a, b) => stageOrderValue(a.textContent) - stageOrderValue(b.textContent));
+          options.forEach(option => select.appendChild(option));
+          select.value = current;
+          select.dataset.stageSorted = 'yes';
+        });
+      }
       document.addEventListener('change', function (event) {
         const select = event.target.closest('select');
         if (!select) return;
@@ -88,6 +110,9 @@
         const metres = distanceValue(select.value);
         setTimeout(() => clickMatchingPassButtons(stroke, metres), 80);
       }, true);
+      document.addEventListener('focusin', reorderStageSelects, true);
+      new MutationObserver(reorderStageSelects).observe(document.documentElement, { childList: true, subtree: true });
+      window.addEventListener('load', reorderStageSelects);
     </script>
     <script type="module" src="/app/main.jsx"></script>
   </body>
