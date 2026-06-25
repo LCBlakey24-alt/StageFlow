@@ -46,6 +46,48 @@
           event.stopImmediatePropagation();
         }
       }, true);
+
+      function distanceValue(value) {
+        return parseInt(String(value || '0').replace('m', ''), 10) || 0;
+      }
+      function distanceStrokeFromLabel(label) {
+        const text = String(label || '').toLowerCase();
+        if (text.includes('front')) return 'front';
+        if (text.includes('back')) return 'back';
+        return '';
+      }
+      function criteriaMatchesDistance(criteria, stroke, metres) {
+        const text = String(criteria || '').toLowerCase();
+        const match = text.match(/(\d+)\s*m/);
+        if (!match) return false;
+        const needed = Number(match[1]);
+        if (needed > metres) return false;
+        const frontLike = text.includes('front') || text.includes('crawl');
+        const backLike = text.includes('back') || text.includes('backstroke');
+        const anyStroke = text.includes('choice of stroke') || text.includes('optional') || text.includes('distance achieved');
+        if (stroke === 'front') return frontLike || anyStroke;
+        if (stroke === 'back') return backLike || anyStroke;
+        return false;
+      }
+      function clickMatchingPassButtons(stroke, metres) {
+        document.querySelectorAll('.criteria').forEach(card => {
+          const label = card.querySelector('b')?.textContent || '';
+          if (!criteriaMatchesDistance(label, stroke, metres)) return;
+          const buttons = Array.from(card.querySelectorAll('button'));
+          const passButton = buttons.find(btn => (btn.textContent || '').trim().toLowerCase() === 'pass');
+          if (passButton && !passButton.className.includes('org')) passButton.click();
+        });
+      }
+      document.addEventListener('change', function (event) {
+        const select = event.target.closest('select');
+        if (!select) return;
+        const field = select.closest('.field');
+        const label = field?.querySelector('label')?.textContent || '';
+        const stroke = distanceStrokeFromLabel(label);
+        if (!stroke) return;
+        const metres = distanceValue(select.value);
+        setTimeout(() => clickMatchingPassButtons(stroke, metres), 80);
+      }, true);
     </script>
     <script type="module" src="/app/main.jsx"></script>
   </body>
