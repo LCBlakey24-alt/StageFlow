@@ -17,6 +17,36 @@
       .hero h1 {
         line-height: 1.08;
       }
+      .certificate-builder-preview {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid #d9dee8;
+        border-radius: 6px;
+        background: #f8fafc;
+        min-height: 260px;
+        display: grid;
+        place-items: center;
+      }
+      .certificate-builder-preview img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .certificate-builder-text {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        font-weight: 900;
+        white-space: nowrap;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(255,255,255,.85);
+        pointer-events: none;
+      }
+      .certificate-builder-empty {
+        padding: 28px;
+        text-align: center;
+        color: #64748b;
+        font-weight: 900;
+      }
       @media (max-width: 850px) {
         .rail button:nth-child(2):after {
           content: 'Timetable' !important;
@@ -100,6 +130,123 @@
           select.dataset.stageSorted = 'yes';
         });
       }
+      function certDefaults() {
+        return {
+          name: 'Stage certificate template',
+          award: 'Stage 1',
+          font: 'Arial',
+          fontSize: 36,
+          colour: '#1e3a8a',
+          nameX: 50,
+          nameY: 43,
+          dateX: 50,
+          dateY: 64,
+          image: ''
+        };
+      }
+      function loadCertTemplate() {
+        try { return { ...certDefaults(), ...(JSON.parse(localStorage.getItem('stageflow-certificate-template') || '{}')) }; }
+        catch { return certDefaults(); }
+      }
+      function saveCertTemplate(data) {
+        localStorage.setItem('stageflow-certificate-template', JSON.stringify(data));
+      }
+      function buildCertificateUploader(target) {
+        if (!target || target.dataset.certBuilder === 'yes') return;
+        target.dataset.certBuilder = 'yes';
+        const data = loadCertTemplate();
+        const card = document.createElement('section');
+        card.className = 'card';
+        card.innerHTML = `
+          <h2>Certificate upload + placement builder</h2>
+          <p class="muted">Upload a blank certificate, choose the award/stage, then position the printed learner name and date.</p>
+          <div class="grid2">
+            <div class="card">
+              <div class="field"><label>Upload certificate image</label><input data-cert="file" type="file" accept="image/*,.pdf" /></div>
+              <div class="field"><label>Template name</label><input data-cert="name" /></div>
+              <div class="field"><label>Award / stage</label><select data-cert="award"><option>Stage 1</option><option>Stage 2</option><option>Stage 3</option><option>Stage 4</option><option>Stage 5</option><option>Stage 6</option><option>Self Rescue Award</option><option>National Curriculum</option></select></div>
+              <div class="grid2">
+                <div class="field"><label>Name X %</label><input data-cert="nameX" type="number" min="0" max="100" /></div>
+                <div class="field"><label>Name Y %</label><input data-cert="nameY" type="number" min="0" max="100" /></div>
+                <div class="field"><label>Date X %</label><input data-cert="dateX" type="number" min="0" max="100" /></div>
+                <div class="field"><label>Date Y %</label><input data-cert="dateY" type="number" min="0" max="100" /></div>
+              </div>
+              <div class="grid2">
+                <div class="field"><label>Font</label><select data-cert="font"><option>Arial</option><option>Georgia</option><option>Trebuchet MS</option><option>Comic Sans MS</option><option>Audiowide</option></select></div>
+                <div class="field"><label>Font size</label><input data-cert="fontSize" type="number" min="12" max="90" /></div>
+              </div>
+              <div class="field"><label>Text colour</label><input data-cert="colour" type="color" /></div>
+              <button class="btn org" data-cert="save">Save certificate template</button>
+            </div>
+            <div class="card">
+              <h3>Live preview</h3>
+              <div class="certificate-builder-preview" data-cert="preview"></div>
+            </div>
+          </div>
+        `;
+        target.appendChild(card);
+        function get(key) { return card.querySelector(`[data-cert="${key}"]`); }
+        function syncFields() {
+          ['name','award','font','fontSize','colour','nameX','nameY','dateX','dateY'].forEach(key => { const el = get(key); if (el) el.value = data[key]; });
+        }
+        function renderPreview() {
+          const preview = get('preview');
+          preview.innerHTML = data.image ? `<img src="${data.image}" alt="Certificate preview" />` : '<div class="certificate-builder-empty">Upload a certificate image to preview placement.</div>';
+          if (data.image) {
+            const name = document.createElement('div');
+            name.className = 'certificate-builder-text';
+            name.textContent = 'Alex Smith';
+            name.style.left = data.nameX + '%';
+            name.style.top = data.nameY + '%';
+            name.style.fontFamily = data.font;
+            name.style.fontSize = data.fontSize + 'px';
+            name.style.color = data.colour;
+            const date = document.createElement('div');
+            date.className = 'certificate-builder-text';
+            date.textContent = new Date().toLocaleDateString('en-GB');
+            date.style.left = data.dateX + '%';
+            date.style.top = data.dateY + '%';
+            date.style.fontFamily = data.font;
+            date.style.fontSize = Math.max(14, Number(data.fontSize) * 0.55) + 'px';
+            date.style.color = data.colour;
+            preview.appendChild(name);
+            preview.appendChild(date);
+          }
+        }
+        function updateData(key, value) {
+          data[key] = ['fontSize','nameX','nameY','dateX','dateY'].includes(key) ? Number(value) : value;
+          saveCertTemplate(data);
+          renderPreview();
+        }
+        syncFields();
+        renderPreview();
+        card.querySelectorAll('[data-cert]').forEach(el => {
+          const key = el.getAttribute('data-cert');
+          if (!key || ['file','save','preview'].includes(key)) return;
+          el.addEventListener('input', () => updateData(key, el.value));
+          el.addEventListener('change', () => updateData(key, el.value));
+        });
+        get('file').addEventListener('change', event => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          if (file.type === 'application/pdf') {
+            alert('PDF upload will be added later. For this first demo, upload a PNG or JPG certificate image.');
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => updateData('image', reader.result);
+          reader.readAsDataURL(file);
+        });
+        get('save').addEventListener('click', () => {
+          saveCertTemplate(data);
+          alert(`Saved ${data.name} for ${data.award}.`);
+        });
+      }
+      function mountCertificateBuilder() {
+        const cards = Array.from(document.querySelectorAll('.card'));
+        const certCard = cards.find(card => card.querySelector('h2')?.textContent?.trim() === 'Certificate templates');
+        if (certCard) buildCertificateUploader(certCard);
+      }
       document.addEventListener('change', function (event) {
         const select = event.target.closest('select');
         if (!select) return;
@@ -111,8 +258,8 @@
         setTimeout(() => clickMatchingPassButtons(stroke, metres), 80);
       }, true);
       document.addEventListener('focusin', reorderStageSelects, true);
-      new MutationObserver(reorderStageSelects).observe(document.documentElement, { childList: true, subtree: true });
-      window.addEventListener('load', reorderStageSelects);
+      new MutationObserver(() => { reorderStageSelects(); mountCertificateBuilder(); }).observe(document.documentElement, { childList: true, subtree: true });
+      window.addEventListener('load', () => { reorderStageSelects(); mountCertificateBuilder(); });
     </script>
     <script type="module" src="/app/main.jsx"></script>
   </body>
