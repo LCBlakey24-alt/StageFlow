@@ -35,7 +35,8 @@ function mergeGroupTemplates(savedGroups = [], fallbackGroups = []) {
     return {
       ...group,
       ...saved,
-      stages: mergeUnique(saved.stages || [], group.stages || [])
+      // Keep the official/default stage order first, then append any custom stages.
+      stages: mergeUnique(group.stages || [], saved.stages || [])
     };
   });
   const customGroups = savedGroups.filter(group => !fallbackGroups.some(fallback => fallback.id === group.id));
@@ -49,9 +50,11 @@ export function normaliseState(saved, fallback) {
     ...(base.framework || {})
   };
 
+  // Keep the latest app/framework order first so saved older data cannot put
+  // Self Rescue / Water Safety in the middle of numbered stages.
   framework.stages = mergeUnique(
-    framework.stages?.length ? framework.stages : [],
-    fallback.framework?.stages || []
+    fallback.framework?.stages || [],
+    framework.stages?.length ? framework.stages : []
   );
   framework.criteria = { ...(fallback.framework.criteria || {}), ...(framework.criteria || {}) };
   framework.groupTemplates = mergeGroupTemplates(
