@@ -47,10 +47,34 @@
         color: #64748b;
         font-weight: 900;
       }
+      .certificate-rule-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        border: 1px solid #d9dee8;
+        border-left: 4px solid #f97316;
+        border-radius: 4px;
+        padding: 9px 10px;
+        margin-top: 8px;
+        background: #f8fafc;
+        font-weight: 900;
+      }
+      .certificate-rule-row span:last-child {
+        color: #64748b;
+        text-align: right;
+      }
       @media (max-width: 850px) {
         .rail button:nth-child(2):after {
           content: 'Timetable' !important;
           font-size: 9px !important;
+        }
+        .certificate-rule-row {
+          display: block;
+        }
+        .certificate-rule-row span:last-child {
+          display: block;
+          text-align: left;
+          margin-top: 4px;
         }
       }
     </style>
@@ -151,6 +175,29 @@
       function saveCertTemplate(data) {
         localStorage.setItem('stageflow-certificate-template', JSON.stringify(data));
       }
+      function stageNumber(stage) {
+        const match = String(stage || '').match(/Stage\s*(\d+)/i);
+        return match ? Number(match[1]) : 0;
+      }
+      function loadStageFlowState() {
+        try { return JSON.parse(localStorage.getItem('stageflow-state') || '{}'); }
+        catch { return {}; }
+      }
+      function nationalCurriculumEarned(learner) {
+        const nc = learner?.nc || {};
+        const required = ['25m front crawl', '25m backstroke', '10m butterfly or breaststroke', 'Water Safety Award completed'];
+        return required.every(item => !!nc[item]);
+      }
+      function certificateEligibilityRows() {
+        const app = loadStageFlowState();
+        const learners = Array.isArray(app.learners) ? app.learners : [];
+        if (!learners.length) return [];
+        return learners.map(learner => {
+          const stage = stageNumber(learner.stage) ? learner.stage : 'No stage certificate yet';
+          const nc = nationalCurriculumEarned(learner) ? ' + National Curriculum' : '';
+          return { name: learner.name || 'Unnamed learner', award: `${stage}${nc}` };
+        });
+      }
       function buildCertificateUploader(target) {
         if (!target || target.dataset.certBuilder === 'yes') return;
         target.dataset.certBuilder = 'yes';
@@ -183,11 +230,24 @@
               <div class="certificate-builder-preview" data-cert="preview"></div>
             </div>
           </div>
+          <section class="card">
+            <h3>Generation rule</h3>
+            <p class="muted">StageFlow will generate one stage certificate per learner: their highest earned stage only. National Curriculum is separate, so it can be generated in addition to the highest stage certificate.</p>
+            <div data-cert="eligible"></div>
+          </section>
         `;
         target.appendChild(card);
         function get(key) { return card.querySelector(`[data-cert="${key}"]`); }
         function syncFields() {
           ['name','award','font','fontSize','colour','nameX','nameY','dateX','dateY'].forEach(key => { const el = get(key); if (el) el.value = data[key]; });
+        }
+        function renderEligibility() {
+          const holder = get('eligible');
+          const rows = certificateEligibilityRows();
+          if (!holder) return;
+          holder.innerHTML = rows.length
+            ? rows.map(row => `<div class="certificate-rule-row"><span>${row.name}</span><span>${row.award}</span></div>`).join('')
+            : '<div class="certificate-rule-row"><span>No learner data yet</span><span>Add learners and stages to preview output</span></div>';
         }
         function renderPreview() {
           const preview = get('preview');
@@ -212,6 +272,7 @@
             preview.appendChild(name);
             preview.appendChild(date);
           }
+          renderEligibility();
         }
         function updateData(key, value) {
           data[key] = ['fontSize','nameX','nameY','dateX','dateY'].includes(key) ? Number(value) : value;
@@ -222,7 +283,7 @@
         renderPreview();
         card.querySelectorAll('[data-cert]').forEach(el => {
           const key = el.getAttribute('data-cert');
-          if (!key || ['file','save','preview'].includes(key)) return;
+          if (!key || ['file','save','preview','eligible'].includes(key)) return;
           el.addEventListener('input', () => updateData(key, el.value));
           el.addEventListener('change', () => updateData(key, el.value));
         });
