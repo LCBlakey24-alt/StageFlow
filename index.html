@@ -52,6 +52,13 @@
         height: auto;
         display: block;
       }
+      .certificate-builder-preview object,
+      .certificate-builder-preview embed {
+        width: 100%;
+        height: 420px;
+        display: block;
+        border: 0;
+      }
       .certificate-builder-text {
         position: absolute;
         transform: translate(-50%, -50%);
@@ -106,6 +113,21 @@
         font-weight: 900;
       }
       .certificate-rule-row span:last-child { color: #64748b; text-align: right; }
+      .certificate-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 8px;
+        margin: 10px 0;
+      }
+      .certificate-summary-card {
+        border: 1px solid #d9dee8;
+        border-radius: 5px;
+        padding: 10px;
+        background: #f8fafc;
+        font-weight: 1000;
+      }
+      .certificate-summary-card small { display: block; color: #64748b; margin-top: 3px; }
+      .cert-missing { color: #dc2626 !important; }
       @media (max-width: 850px) {
         .rail button:nth-child(2):after {
           content: 'Timetable' !important;
@@ -210,6 +232,8 @@
           dateX: 50,
           dateY: 64,
           showDate: true,
+          fileType: '',
+          fileName: '',
           image: ''
         };
       }
@@ -250,15 +274,38 @@
         const required = ['25m front crawl', '25m backstroke', '10m butterfly or breaststroke', 'Water Safety Award completed'];
         return required.every(item => !!nc[item]);
       }
-      function certificateEligibilityRows() {
+      function stageComplete(app, learner, stage) {
+        const criteria = app?.framework?.criteria?.[stage] || [];
+        if (!criteria.length) return false;
+        return criteria.every(item => learner?.res?.[item] === 'pass');
+      }
+      function highestEarnedStage(app, learner) {
+        const stages = (app?.framework?.stages || []).filter(stage => stageNumber(stage));
+        let highest = '';
+        stages.forEach(stage => {
+          if (stageComplete(app, learner, stage)) highest = stage;
+        });
+        if (highest) return highest;
+        return stageNumber(learner?.stage) ? learner.stage : '';
+      }
+      function certificateGenerationRows() {
         const app = loadStageFlowState();
         const learners = Array.isArray(app.learners) ? app.learners : [];
-        if (!learners.length) return [];
-        return learners.map(learner => {
-          const stage = stageNumber(learner.stage) ? learner.stage : 'No stage certificate yet';
-          const nc = nationalCurriculumEarned(learner) ? ' + National Curriculum' : '';
-          return { name: learner.name || 'Unnamed learner', award: `${stage}${nc}` };
+        const templates = loadCertTemplates();
+        const hasTemplate = award => templates.some(template => template.award === award && template.image);
+        const rows = [];
+        learners.forEach(learner => {
+          const stage = highestEarnedStage(app, learner);
+          if (stage) rows.push({ learner: learner.name || 'Unnamed learner', award: stage, kind: 'Highest stage', template: hasTemplate(stage) ? 'Ready' : 'Missing template' });
+          if (nationalCurriculumEarned(learner)) rows.push({ learner: learner.name || 'Unnamed learner', award: 'National Curriculum', kind: 'Extra award', template: hasTemplate('National Curriculum') ? 'Ready' : 'Missing template' });
         });
+        return rows;
+      }
+      function certificateSummary(rows) {
+        return rows.reduce((acc, row) => {
+          acc[row.award] = (acc[row.award] || 0) + 1;
+          return acc;
+        }, {});
       }
       function clampCert(value, min, max) {
         return Math.max(min, Math.min(max, Number(value) || 0));
@@ -271,11 +318,26 @@
         return awards.map(award => `<option ${award === selected ? 'selected' : ''}>${award}</option>`).join('');
       }
       function buildCertPreview(template) {
-        if (!template?.image) return '<div class="certificate-builder-empty">Upload a certificate image to preview placement.</div>';
+        if (!template?.image) return '<div class="certificate-builder-empty">Upload a certificate PDF or image to preview placement.</div>';
+        const isPdf = template.fileType === 'application/pdf' || String(template.image).startsWith('data:application/pdf');
+        const file = isPdf
+          ? `<object data="${template.image}" type="application/pdf"><div class="certificate-builder-empty">PDF uploaded: ${escapeHtml(template.fileName || template.name)}</div></object>`
+          : `<img src="${template.image}" alt="Certificate preview" />`;
         const dateHtml = template.showDate ? `<div class="certificate-builder-text" style="left:${template.dateX}%;top:${template.dateY}%;font-family:${escapeHtml(template.font)};font-size:${template.dateFontSize}px;color:${template.colour};">${new Date().toLocaleDateString('en-GB')}</div>` : '';
-        return `<img src="${template.image}" alt="Certificate preview" />
+        return `${file}
           <div class="certificate-builder-text" style="left:${template.nameX}%;top:${template.nameY}%;font-family:${escapeHtml(template.font)};font-size:${template.fontSize}px;color:${template.colour};">Alex Smith</div>
           ${dateHtml}`;
+      }
+      function generationPreviewHtml() {
+        const rows = certificateGenerationRows();
+        const summary = certificateSummary(rows);
+        const summaryHtml = Object.keys(summary).length
+          ? `<div class="certificate-summary-grid">${Object.entries(summary).map(([award, count]) => `<div class="certificate-summary-card">${count} × ${escapeHtml(award)}<small>${rows.filter(row => row.award === award && row.template === 'Missing template').length ? 'Needs template' : 'Ready'}</small></div>`).join('')}</div>`
+          : '<div class="certificate-rule-row"><span>No certificates ready yet</span><span>Assess learners first, then return here.</span></div>';
+        const rowsHtml = rows.length
+          ? rows.map(row => `<div class="certificate-rule-row"><span>${escapeHtml(row.learner)} — ${escapeHtml(row.kind)}</span><span class="${row.template === 'Missing template' ? 'cert-missing' : ''}">${escapeHtml(row.award)} · ${escapeHtml(row.template)}</span></div>`).join('')
+          : '';
+        return `<section class="card"><h3>Certificate generation preview</h3><p class="muted">This is the check before exporting. Each learner gets their highest stage certificate only. National Curriculum appears as a separate extra certificate.</p>${summaryHtml}${rowsHtml}</section>`;
       }
       function mountCertificateManager() {
         const certCard = Array.from(document.querySelectorAll('.card')).find(card => card.querySelector('h2')?.textContent?.trim() === 'Certificate templates');
@@ -293,12 +355,12 @@
         root.className = 'card stageflow-cert-manager';
         root.innerHTML = `
           <h2>Certificate template library</h2>
-          <p class="muted">Save each certificate once. Use Copy if your Stage 1-6 certificates share the same name/date placement.</p>
+          <p class="muted">Upload either a PDF or an image. Save each certificate once, then use Copy if your Stage 1-6 certificates share the same name/date placement.</p>
           <button class="btn org" data-cert-action="add">+ Add certificate template</button>
           <div data-cert-list>
             ${templates.length ? templates.map(template => `
               <div class="stageflow-cert-row" data-cert-row="${template.id}">
-                <div><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(template.award)} · ${template.showDate ? 'date shown' : 'no date'} · ${template.image ? 'image uploaded' : 'no image yet'}</small></div>
+                <div><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(template.award)} · ${template.showDate ? 'date shown' : 'no date'} · ${template.image ? escapeHtml(template.fileName || (template.fileType === 'application/pdf' ? 'PDF uploaded' : 'image uploaded')) : 'no file yet'}</small></div>
                 <button data-cert-action="edit" data-id="${template.id}">${template.id === activeId ? 'Open' : 'Edit'}</button>
                 <button data-cert-action="copy" data-id="${template.id}">Copy</button>
                 <button class="cert-delete" data-cert-action="delete" data-id="${template.id}">Delete</button>
@@ -309,7 +371,7 @@
               <h2>Editing: ${escapeHtml(active.name)}</h2>
               <div class="grid2">
                 <div class="card">
-                  <div class="field"><label>Upload certificate image</label><input data-cert-input="file" type="file" accept="image/*,.pdf" /></div>
+                  <div class="field"><label>Upload certificate PDF or image</label><input data-cert-input="file" type="file" accept="image/*,.pdf,application/pdf" /></div>
                   <div class="field"><label>Template name</label><input data-cert-input="name" value="${escapeHtml(active.name)}" /></div>
                   <div class="field"><label>This certificate is for</label><select data-cert-input="award">${certAwardOptions(active.award)}</select></div>
                   <div class="field"><label>Font</label><select data-cert-input="font"><option ${active.font === 'Arial' ? 'selected' : ''}>Arial</option><option ${active.font === 'Georgia' ? 'selected' : ''}>Georgia</option><option ${active.font === 'Trebuchet MS' ? 'selected' : ''}>Trebuchet MS</option><option ${active.font === 'Comic Sans MS' ? 'selected' : ''}>Comic Sans MS</option><option ${active.font === 'Audiowide' ? 'selected' : ''}>Audiowide</option></select></div>
@@ -322,7 +384,7 @@
                 <div class="card"><h3>Live preview</h3><div class="certificate-builder-preview">${buildCertPreview(active)}</div></div>
               </div>
             </div>` : ''}
-          <section class="card"><h3>Generation rule</h3><p class="muted">One stage certificate per learner: highest earned stage only. National Curriculum is separate and can be generated as an extra certificate.</p><div>${certificateEligibilityRows().map(row => `<div class="certificate-rule-row"><span>${escapeHtml(row.name)}</span><span>${escapeHtml(row.award)}</span></div>`).join('') || '<div class="certificate-rule-row"><span>No learner data yet</span><span>Add learners and stages to preview output</span></div>'}</div></section>
+          ${generationPreviewHtml()}
         `;
         certCard.appendChild(root);
         function saveAndRerender(nextTemplates) {
@@ -375,7 +437,6 @@
             saveAndRerender(next);
           }
         });
-        root.addEventListener('input', event => updateFromInput(event));
         root.addEventListener('change', event => updateFromInput(event));
         function updateFromInput(event) {
           const input = event.target.closest('[data-cert-input]');
@@ -386,12 +447,13 @@
           if (key === 'file') {
             const file = input.files?.[0];
             if (!file) return;
-            if (file.type === 'application/pdf') {
-              alert('PDF upload will be added later. For now, upload a PNG or JPG certificate image.');
+            const allowed = file.type.startsWith('image/') || file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+            if (!allowed) {
+              alert('Please upload a PDF, PNG, JPG or WebP certificate file.');
               return;
             }
             const reader = new FileReader();
-            reader.onload = () => saveAndRerender(templates.map(t => t.id === currentId ? { ...t, image: reader.result } : t));
+            reader.onload = () => saveAndRerender(templates.map(t => t.id === currentId ? { ...t, image: reader.result, fileType: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image'), fileName: file.name } : t));
             reader.readAsDataURL(file);
             return;
           }
