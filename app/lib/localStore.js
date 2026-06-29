@@ -43,6 +43,16 @@ function mergeGroupTemplates(savedGroups = [], fallbackGroups = []) {
   return [...mergedDefaults, ...customGroups];
 }
 
+function inferProgramme(lesson, fallbackProgramme) {
+  if (lesson.programme) return lesson.programme;
+  const text = `${lesson.school || ''} ${lesson.name || ''} ${lesson.year || ''}`.toLowerCase();
+  if (text.includes('evening')) return 'Evening Swim Lessons';
+  if (text.includes('private')) return 'Private Lessons';
+  if (text.includes('gym')) return 'Gymnastics';
+  if (text.includes('pe')) return 'School PE';
+  return fallbackProgramme || 'School Swimming';
+}
+
 export function normaliseState(saved, fallback) {
   const base = { ...fallback, ...(saved || {}) };
   const framework = {
@@ -71,6 +81,7 @@ export function normaliseState(saved, fallback) {
     day: lesson.day || base.currentDay || fallback.currentDay || 'Tuesday',
     time: lesson.time || '09:00',
     duration: Number(lesson.duration) || 30,
+    programme: inferProgramme(lesson, framework.area || fallback.framework?.area),
     school: lesson.school || 'School / Venue',
     year: lesson.year || 'Year group',
     className: lesson.className || '',
@@ -102,6 +113,7 @@ export function normaliseState(saved, fallback) {
     pack: { ...(fallback.pack || {}), ...(base.pack || {}) },
     audit: Array.isArray(base.audit) ? base.audit : fallback.audit,
     currentDay: base.currentDay || fallback.currentDay || 'Tuesday',
+    timetableFilter: base.timetableFilter || fallback.timetableFilter || 'All',
     draft: base.draft || null,
     active: base.active || safeLessons[0]?.id || '',
     selected: base.selected || '',
