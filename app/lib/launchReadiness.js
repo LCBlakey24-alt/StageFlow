@@ -1,3 +1,5 @@
+import './progressionDashboard.js';
+
 const CHECK_KEY = 'stageflow-launch-readiness';
 const APP_KEY = 'stageflow-state';
 
