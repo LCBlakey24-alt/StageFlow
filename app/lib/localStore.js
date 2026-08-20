@@ -53,6 +53,12 @@ function inferProgramme(lesson, fallbackProgramme) {
   return fallbackProgramme || 'School Swimming';
 }
 
+function groupStageForLearner(learner, lessons, framework) {
+  const lesson = lessons.find(item => item.id === learner.lesson) || lessons[0];
+  const group = framework.groupTemplates?.find(item => item.id === lesson?.groupTemplateId);
+  return group?.stages?.[0] || framework.stages?.[0] || learner.stage || 'Stage 1';
+}
+
 export function normaliseState(saved, fallback) {
   const base = { ...fallback, ...(saved || {}) };
   const framework = {
@@ -92,16 +98,27 @@ export function normaliseState(saved, fallback) {
   }));
 
   const learners = Array.isArray(base.learners) ? base.learners : fallback.learners;
-  const safeLearners = learners.map((learner, index) => ({
-    id: learner.id || `learner-${index}`,
-    lesson: learner.lesson || safeLessons[0]?.id || '',
-    name: learner.name || 'Unnamed learner',
-    stage: learner.stage || framework.stages?.[0] || 'Stage 1',
-    att: learner.att || 'Present',
-    res: learner.res || {},
-    dist: learner.dist || { front: '0m', back: '0m' },
-    nc: learner.nc || {}
-  }));
+  const safeLearners = learners.map((learner, index) => {
+    const safeLearner = {
+      id: learner.id || `learner-${index}`,
+      lesson: learner.lesson || safeLessons[0]?.id || '',
+      name: learner.name || 'Unnamed learner',
+      stage: learner.stage || framework.stages?.[0] || 'Stage 1',
+      att: learner.att || 'Present',
+      res: learner.res || {},
+      dist: learner.dist || { front: '0m', back: '0m' },
+      nc: learner.nc || {}
+    };
+
+    // Simplified Stage Flow model:
+    // learners do not need a separate initial placement step. The lesson group
+    // controls the active assessment criteria, so the learner stage follows the
+    // first stage/criteria set attached to their group.
+    return {
+      ...safeLearner,
+      stage: groupStageForLearner(safeLearner, safeLessons, framework)
+    };
+  });
 
   return {
     ...base,
