@@ -15,14 +15,21 @@ const durations = [15, 30, 45, 60, 75, 90, 105, 120];
 const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
 const scores = ['no', 'float', 'pass'];
+const scoreLabels = { no: 'Not seen', float: 'Needs work', pass: 'Passed' };
 const distances = ['0m', '5m', '10m', '15m', '20m', '25m', '50m', '100m'];
 const programmeFilters = ['All', ...(programmeAreas || ['School Swimming', 'Evening Swim Lessons', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'])];
+const assessmentModes = [
+  { id: 'swimmer', title: 'Assess by swimmer', detail: 'Pick a name, then work through their skills.' },
+  { id: 'skill', title: 'Assess by skill', detail: 'Pick a skill, then mark every swimmer quickly.' }
+];
 
 const starter = {
   screen: 'home',
   step: 'list',
   tab: 'framework',
   selected: '',
+  selectedSkill: '',
+  assessmentMode: 'swimmer',
   active: 'l1',
   draft: null,
   currentDay: 'Tuesday',
@@ -90,7 +97,7 @@ function createLearnersFromText(text, lessonId, stage) {
 function distanceNumber(value) { return parseInt(String(value || '0').replace('m', ''), 10) || 0; }
 function allCriteria(state) { return Object.values(state.framework?.criteria || stageCriteria || {}).flat(); }
 function criteriaDistanceMatch(criteria, stroke, metres) {
-  const text = criteria.toLowerCase();
+  const text = String(criteria || '').toLowerCase();
   const match = text.match(/(\d+)\s*m/);
   if (!match) return false;
   const required = Number(match[1]);
@@ -106,7 +113,7 @@ function applyDistanceAutoPass(state, currentResults, stroke, metres) {
   return next;
 }
 function getDistanceFromCriteria(criteria) {
-  const text = criteria.toLowerCase();
+  const text = String(criteria || '').toLowerCase();
   const match = text.match(/(\d+)\s*m/);
   if (!match) return null;
   if (text.includes('front') || text.includes('crawl')) return { stroke: 'front', metres: Number(match[1]) };
@@ -132,6 +139,22 @@ function moveLearnerToGroupStage(state, learner, groupId) {
   const movedUp = stageIndex(state, nextStage) > stageIndex(state, learner.stage);
   return { ...learner, stage: nextStage, res: movedUp ? applyStageAutoPass(state, learner.res, nextStage) : learner.res };
 }
+function learnerCriteria(state, lesson, learner) {
+  if (!learner || lesson.mode === 'National Curriculum only') return [];
+  return state.framework.criteria?.[learner.stage] || stageCriteria[learner.stage] || [];
+}
+function lessonSkillOptions(state, lesson, kids) {
+  return [...new Set(kids.flatMap(p => learnerCriteria(state, lesson, p)))];
+}
+function passedCountForLearner(state, learner) {
+  const criteria = state.framework.criteria?.[learner.stage] || stageCriteria[learner.stage] || [];
+  return criteria.filter(c => learner.res?.[c] === 'pass').length;
+}
+function completionText(state, learner) {
+  const criteria = state.framework.criteria?.[learner.stage] || stageCriteria[learner.stage] || [];
+  if (!criteria.length) return 'NC only';
+  return `${passedCountForLearner(state, learner)}/${criteria.length} passed`;
+}
 
 function App() {
   const [state, setState] = useState(() => loadAppState(starter));
@@ -143,7 +166,7 @@ function App() {
   const lesson = state.lessons.find(l => l.id === state.active);
   const screens = ['home', 'timetable', 'health', 'reports', 'settings'];
   return <>
-    <div className='top'><div className='brand'>StageFlow</div><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset</button></div>
+    <div className='top'><div className='brand'>Stage Flow</div><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset</button></div>
     <div className='wrap'>
       <nav className='rail'>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list' })}>{screen[0].toUpperCase()}</button>)}</nav>
       <main>
@@ -169,11 +192,18 @@ function Home({ state, update }) {
   const health = getHealthItems(state);
   const done = health.filter(item => item.done).length;
   const percent = Math.round((done / health.length) * 100);
+  const groupsCount = groups(state).length;
   return <>
-    <section className='hero'><p>StageFlow MVP</p><h1>Today starts from the timetable.</h1><p>Open the lesson, register, assess, save, export.</p></section>
-    {next ? <section className='card lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupFor(state, next.groupTemplateId)?.name || 'No group template'}</span><span className='pill'>{next.time}–{addMinutes(next.time, next.duration || 30)}</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open lesson</button></section> : <section className='card'><h2>No lessons yet</h2><p className='muted'>Go to Timetable and create your first session.</p></section>}
-    <div className='grid'><div className='card'><h2>{state.lessons.length}</h2><p className='muted'>Lessons</p></div><div className='card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
-    <section className='card'><h2>Priority 1 stability</h2><p className='muted'>{percent}% checked inside the app</p><button className='btn org' onClick={() => update({ screen: 'health' })}>Open health check</button></section>
+    <section className='hero stage-hero'><p>Teach. Track. Progress.</p><h1>Poolside assessment without the paperwork fog.</h1><p>Start from today’s lesson, choose a swimmer or a skill, and mark progress in a few taps.</p></section>
+    <section className='quick-actions'>
+      <button className='action-card primary-action' onClick={() => next && update({ screen: 'timetable', active: next.id, step: 'assess', assessmentMode: 'swimmer', selected: state.learners.find(p => p.lesson === next.id && p.att !== 'Absent')?.id || '' })}><span>Start Assessment</span><small>Assess by name or skill</small></button>
+      <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span><small>Lessons and registers</small></button>
+      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>My Groups</span><small>{groupsCount} group templates</small></button>
+      <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress Overview</span><small>Reports and handover pack</small></button>
+    </section>
+    {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupFor(state, next.groupTemplateId)?.name || 'No group template'}</span><span className='pill'>{next.time}–{addMinutes(next.time, next.duration || 30)}</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open lesson</button></section> : <section className='card'><h2>No lessons yet</h2><p className='muted'>Go to Timetable and create your first session.</p></section>}
+    <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Lessons</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
+    <section className='card'><h2>Build health</h2><p className='muted'>{percent}% checked inside the app</p><button className='btn org' onClick={() => update({ screen: 'health' })}>Open health check</button></section>
   </>;
 }
 
@@ -238,35 +268,50 @@ function Lesson({ state, update, lesson }) {
 function Register({ state, update, lesson, kids }) {
   function add() { const text = document.getElementById('names')?.value || ''; const newLearners = createLearnersFromText(text, lesson.id, firstStageForGroup(state, lesson.groupTemplateId)); update({ learners: [...state.learners, ...newLearners], audit: [`Added ${newLearners.length} learner(s)`, ...state.audit] }); }
   function attendance(id, value) { update({ learners: state.learners.map(p => p.id === id ? { ...p, att: value } : p) }); }
-  return <><section className='card'><h2>Register</h2><p className='muted'>Paste names one per line for any children missing from this lesson.</p><textarea id='names' placeholder={'Derek Jones\nMia Smith'} /><button className='btn' onClick={add}>Add names</button></section>{kids.length === 0 && <section className='card'><h2>No learners yet</h2><p className='muted'>Paste names above to create this register.</p></section>}{kids.map(p => <section className='card' key={p.id}><h3>{p.name}</h3>{attendanceOptions.map(v => <button className={'btn ' + (p.att === v ? 'org' : '')} key={v} onClick={() => attendance(p.id, v)}>{v}</button>)}</section>)}<div className='footer'><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || '' })}>Confirm register & assess</button></div></>;
+  return <><section className='card'><h2>Register</h2><p className='muted'>Paste names one per line for any children missing from this lesson.</p><textarea id='names' placeholder={'Derek Jones\nMia Smith'} /><button className='btn' onClick={add}>Add names</button></section>{kids.length === 0 && <section className='card'><h2>No learners yet</h2><p className='muted'>Paste names above to create this register.</p></section>}{kids.map(p => <section className='card register-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{p.stage} · {completionText(state, p)}</p></div><div>{attendanceOptions.map(v => <button className={'btn ' + (p.att === v ? 'org' : '')} key={v} onClick={() => attendance(p.id, v)}>{v}</button>)}</div></section>)}<div className='footer'><button className='btn org' onClick={() => update({ step: 'assess', assessmentMode: 'swimmer', selected: kids.find(p => p.att !== 'Absent')?.id || '' })}>Confirm register & assess</button></div></>;
 }
 
 function Assess({ state, update, lesson, kids, selected }) {
-  function change(patch) { update({ learners: state.learners.map(p => p.id === selected.id ? { ...p, ...patch } : p) }); }
-  function setDistance(stroke, value) {
+  const stageOptions = [...(state.framework?.stages || [])].sort((a, b) => stageSortValue(a) - stageSortValue(b));
+  const mode = state.assessmentMode || 'swimmer';
+  const skillOptions = lessonSkillOptions(state, lesson, kids);
+  const selectedSkill = skillOptions.includes(state.selectedSkill) ? state.selectedSkill : (skillOptions[0] || '');
+  const criteria = learnerCriteria(state, lesson, selected);
+
+  function changeLearner(id, patch) { update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) }); }
+  function changeSelected(patch) { changeLearner(selected.id, patch); }
+  function setDistanceForLearner(learner, stroke, value) {
     const metres = distanceNumber(value);
     const ncKey = stroke === 'front' ? '25m front crawl' : '25m backstroke';
-    change({ dist: { ...selected.dist, [stroke]: value }, res: applyDistanceAutoPass(state, selected.res, stroke, metres), nc: { ...selected.nc, [ncKey]: metres >= 25 } });
+    changeLearner(learner.id, { dist: { ...learner.dist, [stroke]: value }, res: applyDistanceAutoPass(state, learner.res, stroke, metres), nc: { ...learner.nc, [ncKey]: metres >= 25 } });
   }
   function setStage(nextStage) {
     const movedUp = stageIndex(state, nextStage) > stageIndex(state, selected.stage);
-    change({ stage: nextStage, res: movedUp ? applyStageAutoPass(state, selected.res, nextStage) : selected.res });
+    changeSelected({ stage: nextStage, res: movedUp ? applyStageAutoPass(state, selected.res, nextStage) : selected.res });
   }
-  function score(criteria, value) {
-    const distance = getDistanceFromCriteria(criteria);
+  function scoreLearner(learner, criteriaItem, value) {
+    const distance = getDistanceFromCriteria(criteriaItem);
     if (value === 'pass' && distance) {
-      const current = distanceNumber(selected.dist?.[distance.stroke]);
+      const current = distanceNumber(learner.dist?.[distance.stroke]);
       const metres = Math.max(current, distance.metres);
       const valueText = `${metres}m`;
       const ncKey = distance.stroke === 'front' ? '25m front crawl' : '25m backstroke';
-      change({ dist: { ...selected.dist, [distance.stroke]: valueText }, res: applyDistanceAutoPass(state, { ...selected.res, [criteria]: value }, distance.stroke, metres), nc: { ...selected.nc, [ncKey]: metres >= 25 } });
+      changeLearner(learner.id, { dist: { ...learner.dist, [distance.stroke]: valueText }, res: applyDistanceAutoPass(state, { ...learner.res, [criteriaItem]: value }, distance.stroke, metres), nc: { ...learner.nc, [ncKey]: metres >= 25 } });
     } else {
-      change({ res: { ...selected.res, [criteria]: value } });
+      changeLearner(learner.id, { res: { ...learner.res, [criteriaItem]: value } });
     }
   }
-  const stageOptions = [...(state.framework?.stages || [])].sort((a, b) => stageSortValue(a) - stageSortValue(b));
-  const criteria = lesson.mode === 'National Curriculum only' ? [] : (state.framework.criteria?.[selected.stage] || stageCriteria[selected.stage] || []);
-  return <><div className='grid2'><section className='card'>{kids.map(p => <button className={'btn ' + (p.id === selected.id ? 'org' : '')} key={p.id} onClick={() => update({ selected: p.id })}>{p.name}</button>)}</section><section className='card'><h2>{selected.name}</h2>{lesson.mode !== 'National Curriculum only' && <><Select label='Current working stage' value={selected.stage} onChange={setStage} options={stageOptions.map(x => ({ value: x, label: x }))} /><p className='muted'>You can move a learner freely. Moving up auto-passes all earlier stage criteria, but moving down does not erase evidence.</p></>}<div className='grid2'><Distance label='Distance front' value={selected.dist.front} onChange={v => setDistance('front', v)} /><Distance label='Distance back' value={selected.dist.back} onChange={v => setDistance('back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <div className='criteria' key={c}><b>{c}</b><div>{scores.map(v => <button className={'btn ' + (selected.res[c] === v ? 'org' : '')} key={v} onClick={() => score(c, v)}>{v}</button>)}</div></div>)}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc[item]} onChange={e => change({ nc: { ...selected.nc, [item]: e.target.checked } })} /> {item}</label>)}</section></div><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button><button className='btn org' onClick={() => update({ step: 'save' })}>Save lesson</button></div></>;
+
+  return <>
+    <section className='card assessment-choice'><h2>Choose assessment flow</h2><p className='muted'>Use names when you are focusing on one swimmer. Use skills when the whole group is doing the same task.</p><div className='assess-mode-grid'>{assessmentModes.map(item => <button key={item.id} className={'assess-mode ' + (mode === item.id ? 'on' : '')} onClick={() => update({ assessmentMode: item.id, selectedSkill: selectedSkill || state.selectedSkill })}><strong>{item.title}</strong><small>{item.detail}</small></button>)}</div></section>
+    {mode === 'swimmer' && <div className='grid2 assessment-layout'><section className='card learner-rail'><h2>Swimmers</h2>{kids.map(p => <button className={'learner-button ' + (p.id === selected.id ? 'on' : '')} key={p.id} onClick={() => update({ selected: p.id })}><span>{p.name}</span><small>{p.stage} · {completionText(state, p)}</small></button>)}</section><section className='card assessment-card'><div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{selected.stage} · {completionText(state, selected)}</p></div><span className='pill'>By swimmer</span></div>{lesson.mode !== 'National Curriculum only' && <><Select label='Current working stage' value={selected.stage} onChange={setStage} options={stageOptions.map(x => ({ value: x, label: x }))} /><p className='muted'>Moving up auto-passes all earlier stage criteria, but moving down does not erase evidence.</p></>}<div className='grid2'><Distance label='Distance front' value={selected.dist.front} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist.back} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <SkillScore key={c} criteria={c} value={selected.res?.[c]} onScore={v => scoreLearner(selected, c, v)} />)}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc[item]} onChange={e => changeSelected({ nc: { ...selected.nc, [item]: e.target.checked } })} /> {item}</label>)}</section></div>}
+    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head'><div><h2>Assess by skill</h2><p className='muted'>Pick one skill and mark every present swimmer from the same screen.</p></div><span className='pill'>By skill</span></div>{skillOptions.length ? <><Select label='Skill to assess' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={skillOptions.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => { const hasSkill = learnerCriteria(state, lesson, p).includes(selectedSkill); return <div className={'skill-row ' + (!hasSkill ? 'is-muted' : '')} key={p.id}><div><h3>{p.name}</h3><p className='muted'>{p.stage} · {hasSkill ? completionText(state, p) : 'Skill not in current stage'}</p></div><div className='score-buttons'>{scores.map(v => <button disabled={!hasSkill} className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreLabels[v]}</button>)}</div></div>; })}</div></> : <p className='muted'>This lesson is currently National Curriculum only, so there are no stage skills to group-assess.</p>}</section>}
+    <div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button><button className='btn org' onClick={() => update({ step: 'save' })}>Save lesson</button></div>
+  </>;
+}
+
+function SkillScore({ criteria, value, onScore }) {
+  return <div className='criteria skill-card'><b>{criteria}</b><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (value === v ? 'on' : '')} key={v} onClick={() => onScore(v)}>{scoreLabels[v]}</button>)}</div></div>;
 }
 
 function HealthCheck({ state, update }) {
@@ -274,7 +319,7 @@ function HealthCheck({ state, update }) {
   const done = items.filter(item => item.done).length;
   const failed = items.filter(item => !item.done);
   const percent = Math.round((done / items.length) * 100);
-  const testSteps = ['Load app without blank screen', 'Reset app', 'Open Home', 'Open Timetable', 'Switch Monday-Friday tabs', 'Create lesson from time slot', 'Paste learners into lesson', 'Open lesson', 'Complete register', 'Assess a learner', 'Save lesson', 'Open Reports', 'Open Settings'];
+  const testSteps = ['Load app without blank screen', 'Reset app', 'Open Home', 'Open Timetable', 'Switch Monday-Friday tabs', 'Create lesson from time slot', 'Paste learners into lesson', 'Open lesson', 'Complete register', 'Switch assessment by swimmer', 'Switch assessment by skill', 'Assess a learner', 'Save lesson', 'Open Reports', 'Open Settings'];
   return <><section className='hero'><p>Priority 1</p><h1>Stability health check</h1><p>{percent}% of automatic checks are passing.</p></section><div className='grid'><div className='card'><h2>{percent}%</h2><p className='muted'>Automatic stability score</p></div><div className='card'><h2>{done}/{items.length}</h2><p className='muted'>Checks passing</p></div><div className='card'><h2>{state.audit.length}</h2><p className='muted'>Audit entries</p></div></div><section className='card'><h2>{failed.length ? 'Priority 1 needs checks' : 'Priority 1 ready for manual sign-off'}</h2><p className='muted'>{failed.length ? 'Fix the warnings below before moving on.' : 'Run the manual test route once on your phone, then move to Priority 2.'}</p></section><section className='card'><h2>✅ Passed</h2>{items.filter(item => item.done).map(item => <div className='folder' key={item.label}>✅ {item.label}<p className='muted'>{item.detail}</p></div>)}</section><section className='card'><h2>⚠️ Needs fixing</h2>{failed.length ? failed.map(item => <div className='folder' key={item.label}>⚠️ {item.label}<p className='muted'>{item.detail}</p></div>) : <div className='folder'>✅ Nothing currently flagged.</div>}</section><section className='card'><h2>Manual live test route</h2><p className='muted'>Use this after Vercel redeploys. If every step works, Priority 1 is effectively complete.</p>{testSteps.map((step, index) => <div className='folder' key={step}>#{index + 1} {step}</div>)}</section><div className='footer'><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset app data</button><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Test timetable</button></div></>;
 }
 function getHealthItems(state) {
@@ -285,6 +330,7 @@ function getHealthItems(state) {
     { label: 'Lesson fields are safe', done: state.lessons.every(l => l.id && l.day && l.time && l.name && l.duration), detail: 'Every lesson has id, day, time, name and duration.' },
     { label: 'Weekly day tabs are valid', done: days.includes(state.currentDay || 'Tuesday'), detail: `Selected day is ${state.currentDay || 'Tuesday'}.` },
     { label: 'Programme filter is valid', done: programmeFilters.includes(state.timetableFilter || 'All'), detail: `Calendar filter is ${state.timetableFilter || 'All'}.` },
+    { label: 'Assessment mode is valid', done: ['swimmer', 'skill'].includes(state.assessmentMode || 'swimmer'), detail: `Assessment mode is ${state.assessmentMode || 'swimmer'}.` },
     { label: 'Framework stages exist', done: Array.isArray(state.framework?.stages) && state.framework.stages.length > 0, detail: `${state.framework?.stages?.length || 0} stage(s) available.` },
     { label: 'Group templates exist', done: groups(state).length > 0, detail: `${groups(state).length} group template(s) available.` },
     { label: 'Learner data is safe', done: Array.isArray(state.learners) && state.learners.every(p => p.id && p.name && p.lesson && p.stage && p.att), detail: `${state.learners?.length || 0} learner(s) currently loaded.` },
