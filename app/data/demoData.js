@@ -1,4 +1,4 @@
-export const programmeAreas = ['School Swimming', 'Evening Swim Lessons', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'];
+export const programmeAreas = ['School Swimming', 'Evening Swim 1:1', 'Evening Swim Group', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'];
 
 export const nationalCurriculum = [
   '25m front crawl',
@@ -194,51 +194,70 @@ export const eveningSwimCriteria = {
 
 export const stageCriteria = schoolSwimmingCriteria;
 
+const combinedSwimCriteria = {
+  ...schoolSwimmingCriteria,
+  'Stage 7': eveningSwimCriteria['Stage 7']
+};
+
+export const allSwimStageNames = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Stage 6', 'Stage 7', 'Self Rescue Award'];
+
 export const schoolGroupTemplates = [
-  { id: 'g1', name: 'Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue' },
-  { id: 'g2', name: 'Group 2', detail: 'Stages 4-5', stages: ['Stage 4', 'Stage 5'], colour: 'orange' },
-  { id: 'g3', name: 'Group 3', detail: 'Stage 6 + Self Rescue', stages: ['Stage 6', 'Self Rescue Award'], colour: 'gold' }
+  { id: 'g1', name: 'School Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue', programme: 'School Swimming' },
+  { id: 'g2', name: 'School Group 2', detail: 'Stages 4-5', stages: ['Stage 4', 'Stage 5'], colour: 'orange', programme: 'School Swimming' },
+  { id: 'g3', name: 'School Group 3', detail: 'Stage 6 + Self Rescue', stages: ['Stage 6', 'Self Rescue Award'], colour: 'gold', programme: 'School Swimming' }
 ];
 
 export const eveningGroupTemplates = [
-  { id: 'eg1', name: 'Evening Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue' },
-  { id: 'eg2', name: 'Evening Group 2', detail: 'Stages 4-5', stages: ['Stage 4', 'Stage 5'], colour: 'orange' },
-  { id: 'eg3', name: 'Evening Group 3', detail: 'Stages 6-7', stages: ['Stage 6', 'Stage 7'], colour: 'gold' }
+  { id: 'eg1', name: 'Evening Swim Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue', programme: 'Evening Swim Group' },
+  { id: 'eg2', name: 'Evening Swim Group 2', detail: 'Stages 4-5', stages: ['Stage 4', 'Stage 5'], colour: 'orange', programme: 'Evening Swim Group' },
+  { id: 'eg3', name: 'Evening Swim Group 3', detail: 'Stages 6-7', stages: ['Stage 6', 'Stage 7'], colour: 'gold', programme: 'Evening Swim Group' }
 ];
 
-export const groupTemplates = schoolGroupTemplates;
+export const eveningOneToOneTemplate = {
+  id: 'eg121',
+  name: 'Evening Swim 1:1',
+  detail: 'All stages visible',
+  stages: allSwimStageNames,
+  colour: 'gold',
+  programme: 'Evening Swim 1:1',
+  allStages: true
+};
+
+export const groupTemplates = [...schoolGroupTemplates, ...eveningGroupTemplates, eveningOneToOneTemplate];
 
 export const eveningSwimFramework = {
   name: 'Evening Swim Lessons - Swim England Aligned',
-  area: 'Evening Swim Lessons',
+  area: 'Evening Swim Group',
   mode: 'Stages + National Curriculum',
   scoringSystem: 'privateLessons',
-  stages: Object.keys(eveningSwimCriteria),
-  criteria: eveningSwimCriteria,
+  stages: allSwimStageNames,
+  criteria: combinedSwimCriteria,
   nationalCurriculum,
-  groupTemplates: eveningGroupTemplates,
-  groups: eveningGroupTemplates.map(g => `${g.name}: ${g.detail}`)
+  groupTemplates: [...eveningGroupTemplates, eveningOneToOneTemplate],
+  groups: [...eveningGroupTemplates, eveningOneToOneTemplate].map(g => `${g.name}: ${g.detail}`)
 };
 
 export const demoFramework = {
-  name: 'Swim at School',
+  name: 'Stage Flow Swimming',
   area: 'School Swimming',
   mode: 'Stages + National Curriculum',
   scoringSystem: 'schoolSwimming',
-  stages: Object.keys(schoolSwimmingCriteria),
-  criteria: schoolSwimmingCriteria,
+  stages: allSwimStageNames,
+  criteria: combinedSwimCriteria,
   nationalCurriculum,
-  groupTemplates: schoolGroupTemplates,
-  groups: schoolGroupTemplates.map(g => `${g.name}: ${g.detail}`)
+  groupTemplates,
+  groups: groupTemplates.map(g => `${g.name}: ${g.detail}`)
 };
 
 export const demoLessons = [
-  { id: 'l1', day: 'Tuesday', time: '09:30', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Lewis', name: 'Year 5 Group 1', groupTemplateId: 'g1', mode: 'Stages + National Curriculum' },
-  { id: 'l2', day: 'Tuesday', time: '10:00', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Sarah', name: 'Year 5 Group 2', groupTemplateId: 'g2', mode: 'Stages + National Curriculum' },
-  { id: 'l3', day: 'Wednesday', time: '17:00', duration: 30, school: 'Evening Swim Lessons', year: 'Junior beginners', className: 'Stage 1-3', coach: 'Lewis', name: 'Evening Swim Group 1', groupTemplateId: 'g1', mode: 'Stages + National Curriculum' }
+  { id: 'l1', day: 'Tuesday', time: '09:30', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Lewis', name: 'Year 5 School Group 1', programme: 'School Swimming', groupTemplateId: 'g1', mode: 'Stages + National Curriculum' },
+  { id: 'l2', day: 'Tuesday', time: '10:00', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Sarah', name: 'Year 5 School Group 2', programme: 'School Swimming', groupTemplateId: 'g2', mode: 'Stages + National Curriculum' },
+  { id: 'l3', day: 'Wednesday', time: '17:00', duration: 30, school: 'Evening Swim Group', year: 'Junior beginners', className: 'Stage 1-3', coach: 'Lewis', name: 'Evening Swim Group 1', programme: 'Evening Swim Group', groupTemplateId: 'eg1', mode: 'Stages + National Curriculum' },
+  { id: 'l4', day: 'Wednesday', time: '17:30', duration: 30, school: 'Evening Swim 1:1', year: '1:1 swimmer', className: 'All stages', coach: 'Lewis', name: 'Evening Swim 1:1', programme: 'Evening Swim 1:1', groupTemplateId: 'eg121', mode: 'Stages + National Curriculum' }
 ];
 
 export const demoLearners = [
   { id: 'p1', lesson: 'l1', name: 'Alex Smith', stage: 'Stage 1', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} },
-  { id: 'p2', lesson: 'l1', name: 'Mia Jones', stage: 'Stage 2', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} }
+  { id: 'p2', lesson: 'l1', name: 'Mia Jones', stage: 'Stage 2', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} },
+  { id: 'p3', lesson: 'l4', name: '1:1 Example Swimmer', stage: 'Stage 3', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} }
 ];
