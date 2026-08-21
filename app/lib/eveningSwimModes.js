@@ -1,7 +1,23 @@
 const ONE_TO_ONE = 'Evening Swim 1:1';
 const EVENING_GROUP = 'Evening Swim Group';
+const SCHOOL_SWIM = 'School Swimming';
+const PRIVATE_LESSONS = 'Private Lessons';
 const ONE_TO_ONE_GROUP_ID = 'eg121';
 const STATE_KEY = 'stageflow-state';
+
+const PROGRAMME_DEFAULT_GROUP = {
+  [SCHOOL_SWIM]: 'g1',
+  [EVENING_GROUP]: 'eg1',
+  [ONE_TO_ONE]: ONE_TO_ONE_GROUP_ID,
+  [PRIVATE_LESSONS]: ONE_TO_ONE_GROUP_ID
+};
+
+const PROGRAMME_GROUPS = {
+  [SCHOOL_SWIM]: ['g1', 'g2', 'g3'],
+  [EVENING_GROUP]: ['eg1', 'eg2', 'eg3'],
+  [ONE_TO_ONE]: [ONE_TO_ONE_GROUP_ID],
+  [PRIVATE_LESSONS]: [ONE_TO_ONE_GROUP_ID]
+};
 
 function getFieldByLabel(labelText) {
   return Array.from(document.querySelectorAll('.field')).find(field => {
@@ -32,6 +48,14 @@ function normaliseLegacyEveningProgramme(value) {
   return value;
 }
 
+function allowedGroupsForProgramme(programme) {
+  return PROGRAMME_GROUPS[normaliseLegacyEveningProgramme(programme)] || null;
+}
+
+function defaultGroupForProgramme(programme) {
+  return PROGRAMME_DEFAULT_GROUP[normaliseLegacyEveningProgramme(programme)] || '';
+}
+
 function patchProgrammeSelects() {
   document.querySelectorAll('.field').forEach(field => {
     const label = field.querySelector('label')?.textContent?.trim();
@@ -52,7 +76,7 @@ function patchProgrammeSelects() {
   });
 }
 
-function syncOneToOneGroup() {
+function patchGroupSelectForProgramme() {
   const programmeField = getFieldByLabel('Programme');
   const groupField = getFieldByLabel('Assessment group');
   const programme = programmeField?.querySelector('select')?.value;
@@ -60,7 +84,19 @@ function syncOneToOneGroup() {
   if (!programme || !groupSelect) return;
 
   ensureOption(groupSelect, ONE_TO_ONE_GROUP_ID, 'Evening Swim 1:1 — All stages visible');
-  if (programme === ONE_TO_ONE) setNativeSelectValue(groupSelect, ONE_TO_ONE_GROUP_ID);
+
+  const allowed = allowedGroupsForProgramme(programme);
+  const defaultGroup = defaultGroupForProgramme(programme);
+
+  Array.from(groupSelect.options).forEach(option => {
+    const shouldShow = !allowed || allowed.includes(option.value);
+    option.hidden = !shouldShow;
+    option.disabled = !shouldShow;
+  });
+
+  if (allowed && !allowed.includes(groupSelect.value)) {
+    setNativeSelectValue(groupSelect, defaultGroup || allowed[0]);
+  }
 }
 
 function addOneToOneHelper() {
@@ -73,8 +109,8 @@ function addOneToOneHelper() {
   helper.className = 'folder';
   helper.dataset.stageflowEveningMode = 'true';
   helper.innerHTML = `
-    <strong>Evening swim rule</strong>
-    <p class="muted"><b>Evening Swim Group</b> works like a normal group criteria session. <b>Evening Swim 1:1</b> automatically uses the all-stages criteria group so every stage is visible for that swimmer.</p>
+    <strong>Programme controls criteria groups</strong>
+    <p class="muted"><b>School Swimming</b> shows school groups. <b>Evening Swim Group</b> shows evening group criteria. <b>Evening Swim 1:1</b> locks onto all stages so you can assess whatever that swimmer needs.</p>
   `;
   setupCard.appendChild(helper);
 }
@@ -90,10 +126,18 @@ function patchSavedState() {
     if (Array.isArray(state.lessons)) {
       state.lessons = state.lessons.map(lesson => {
         const programme = normaliseLegacyEveningProgramme(lesson.programme);
+        const allowed = allowedGroupsForProgramme(programme);
+        const defaultGroup = defaultGroupForProgramme(programme);
         let next = programme !== lesson.programme ? { ...lesson, programme } : lesson;
-        if (next.programme === ONE_TO_ONE && next.groupTemplateId !== ONE_TO_ONE_GROUP_ID) {
-          next = { ...next, groupTemplateId: ONE_TO_ONE_GROUP_ID, school: ONE_TO_ONE, className: next.className || 'All stages' };
+
+        if (allowed && !allowed.includes(next.groupTemplateId)) {
+          next = { ...next, groupTemplateId: defaultGroup || allowed[0] };
         }
+
+        if (next.programme === ONE_TO_ONE || next.programme === PRIVATE_LESSONS) {
+          next = { ...next, groupTemplateId: ONE_TO_ONE_GROUP_ID, school: next.programme, className: next.className || 'All stages' };
+        }
+
         if (next !== lesson) changed = true;
         return next;
       });
@@ -107,7 +151,7 @@ function patchSavedState() {
 
 function runPatches() {
   patchProgrammeSelects();
-  syncOneToOneGroup();
+  patchGroupSelectForProgramme();
   addOneToOneHelper();
 }
 
@@ -121,5 +165,5 @@ document.addEventListener('change', event => {
   if (!select) return;
   const field = select.closest('.field');
   const label = field?.querySelector('label')?.textContent?.trim();
-  if (label === 'Programme') setTimeout(runPatches, 0);
+  if (label === 'Programme' || label === 'Assessment group') setTimeout(runPatches, 0);
 }, true);
