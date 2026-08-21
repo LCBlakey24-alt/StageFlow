@@ -19,6 +19,48 @@ const PROGRAMME_GROUPS = {
   [PRIVATE_LESSONS]: [ONE_TO_ONE_GROUP_ID]
 };
 
+const QUICK_SESSIONS = [
+  {
+    id: 'school',
+    title: 'School swim class',
+    detail: 'School, day, group criteria',
+    programme: SCHOOL_SWIM,
+    groupTemplateId: 'g1',
+    name: 'New School Swim Class',
+    school: 'New School',
+    year: 'Year group',
+    className: 'Group 1',
+    time: '09:00',
+    duration: '30'
+  },
+  {
+    id: 'evening-group',
+    title: 'Evening swim group',
+    detail: 'Shared evening criteria group',
+    programme: EVENING_GROUP,
+    groupTemplateId: 'eg1',
+    name: 'Evening Swim Group',
+    school: EVENING_GROUP,
+    year: 'Evening swimmers',
+    className: 'Stage 1-3',
+    time: '17:00',
+    duration: '30'
+  },
+  {
+    id: 'evening-121',
+    title: 'Evening swim 1:1',
+    detail: 'All stages visible',
+    programme: ONE_TO_ONE,
+    groupTemplateId: ONE_TO_ONE_GROUP_ID,
+    name: 'Evening Swim 1:1',
+    school: ONE_TO_ONE,
+    year: '1:1 swimmer',
+    className: 'All stages',
+    time: '17:30',
+    duration: '30'
+  }
+];
+
 function getFieldByLabel(labelText) {
   return Array.from(document.querySelectorAll('.field')).find(field => {
     const label = field.querySelector('label')?.textContent?.trim();
@@ -40,6 +82,28 @@ function setNativeSelectValue(select, value) {
   select.value = value;
   select.dispatchEvent(new Event('change', { bubbles: true }));
   return true;
+}
+
+function setNativeInputValue(input, value) {
+  if (!input || input.value === value) return false;
+  const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  if (setter) setter.call(input, value);
+  else input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  return true;
+}
+
+function setSelectField(label, value, optionLabel = value) {
+  const select = getFieldByLabel(label)?.querySelector('select');
+  ensureOption(select, value, optionLabel);
+  return setNativeSelectValue(select, value);
+}
+
+function setInputField(label, value) {
+  const input = getFieldByLabel(label)?.querySelector('input, textarea');
+  return setNativeInputValue(input, value);
 }
 
 function normaliseLegacyEveningProgramme(value) {
@@ -115,6 +179,69 @@ function addOneToOneHelper() {
   setupCard.appendChild(helper);
 }
 
+function findTimetableHero() {
+  return Array.from(document.querySelectorAll('.hero')).find(hero => {
+    const text = hero.textContent || '';
+    return text.includes('Lesson plan') || text.includes('Choose the group first');
+  });
+}
+
+function findAddSessionButton() {
+  return Array.from(document.querySelectorAll('button')).find(button => {
+    const label = (button.textContent || '').trim();
+    return label === '+ Add class/session' || label === '+ Add group lesson' || label.includes('Add class/session');
+  });
+}
+
+function createQuickSession(preset) {
+  const addButton = findAddSessionButton();
+  if (!addButton) return;
+
+  addButton.click();
+  window.setTimeout(() => {
+    setSelectField('Programme', preset.programme);
+    window.setTimeout(() => {
+      runPatches();
+      setSelectField('Assessment group', preset.groupTemplateId, preset.groupTemplateId === ONE_TO_ONE_GROUP_ID ? 'Evening Swim 1:1 — All stages visible' : preset.groupTemplateId);
+      setInputField('Lesson name', preset.name);
+      setInputField('School / venue', preset.school);
+      setInputField('Year / class', preset.year);
+      setInputField('Coach', 'Lewis');
+      setInputField('Start time', preset.time);
+      setSelectField('Duration', preset.duration, `${preset.duration} minutes`);
+    }, 80);
+  }, 80);
+}
+
+function addQuickSessionShortcuts() {
+  const hero = findTimetableHero();
+  if (!hero || document.querySelector('[data-stageflow-quick-sessions]')) return;
+
+  const section = document.createElement('section');
+  section.className = 'card';
+  section.dataset.stageflowQuickSessions = 'true';
+  section.innerHTML = `
+    <h2>Quick add</h2>
+    <p class="muted">Start with the common session types, then tweak the day, time, venue and names.</p>
+    <div class="quick-actions">
+      ${QUICK_SESSIONS.map(preset => `
+        <button class="action-card" data-stageflow-quick-session="${preset.id}">
+          <span>${preset.title}</span>
+          <small>${preset.detail}</small>
+        </button>
+      `).join('')}
+    </div>
+  `;
+  hero.insertAdjacentElement('afterend', section);
+
+  section.addEventListener('click', event => {
+    const button = event.target.closest('[data-stageflow-quick-session]');
+    if (!button) return;
+    const preset = QUICK_SESSIONS.find(item => item.id === button.dataset.stageflowQuickSession);
+    if (preset) createQuickSession(preset);
+  });
+}
+
 function patchSavedState() {
   try {
     const text = window.localStorage.getItem(STATE_KEY);
@@ -153,6 +280,7 @@ function runPatches() {
   patchProgrammeSelects();
   patchGroupSelectForProgramme();
   addOneToOneHelper();
+  addQuickSessionShortcuts();
 }
 
 patchSavedState();
