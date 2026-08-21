@@ -5,12 +5,7 @@ import './styles/calendar-overlay.css';
 import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 
-function timeToMinutes(time) { const [h, m] = String(time || '00:00').split(':').map(Number); return ((Number.isFinite(h) ? h : 0) * 60) + (Number.isFinite(m) ? m : 0); }
-function formatTime(total) { const hh = String(Math.floor(total / 60)).padStart(2, '0'); const mm = String(total % 60).padStart(2, '0'); return `${hh}:${mm}`; }
-function makeTimeSlots(start = '08:00', end = '21:00', step = 15) { const slots = []; for (let t = timeToMinutes(start); t <= timeToMinutes(end); t += step) slots.push(formatTime(t)); return slots; }
-
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-const timeSlots = makeTimeSlots('08:00', '21:00', 15);
 const durations = [15, 30, 45, 60, 75, 90, 105, 120];
 const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
@@ -19,14 +14,14 @@ const scoreLabels = { no: 'Not seen', float: 'Needs work', pass: 'Passed' };
 const distances = ['0m', '5m', '10m', '15m', '20m', '25m', '50m', '100m'];
 const programmeFilters = ['All', ...(programmeAreas || ['School Swimming', 'Evening Swim Lessons', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'])];
 const assessmentModes = [
-  { id: 'swimmer', title: 'Assess by swimmer', detail: 'Pick a name, then work through their skills.' },
-  { id: 'skill', title: 'Assess by skill', detail: 'Pick a skill, then mark every swimmer quickly.' }
+  { id: 'swimmer', title: 'Assess by swimmer', detail: 'Pick a name and mark this group criteria.' },
+  { id: 'skill', title: 'Assess by skill', detail: 'Pick one group skill and mark everyone.' }
 ];
 
 const starter = {
   screen: 'home',
   step: 'list',
-  tab: 'framework',
+  tab: 'groups',
   selected: '',
   selectedSkill: '',
   assessmentMode: 'swimmer',
@@ -47,22 +42,25 @@ const starter = {
     { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
-  audit: ['Overlay calendar and overlap blocking added']
+  audit: ['Group criteria assessment flow added']
 };
 
+function timeToMinutes(time) {
+  const [h, m] = String(time || '00:00').split(':').map(Number);
+  return ((Number.isFinite(h) ? h : 0) * 60) + (Number.isFinite(m) ? m : 0);
+}
+function formatTime(total) {
+  const hh = String(Math.floor(total / 60)).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+function addMinutes(time, minutes) { return formatTime(timeToMinutes(time) + (Number(minutes) || 0)); }
 function lessonDay(lesson) { return lesson?.day || 'Tuesday'; }
-function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function groups(state) { return state.framework?.groupTemplates || []; }
 function groupFor(state, id) { return groups(state).find(g => g.id === id); }
-function addMinutes(time, minutes) { return formatTime(timeToMinutes(time) + (Number(minutes) || 0)); }
-function lessonInterval(lesson) { const start = timeToMinutes(lesson.time); const end = start + (Number(lesson.duration) || 30); return { start, end }; }
-function lessonOverlaps(lessons, candidate, ignoreId = '') {
-  const a = lessonInterval(candidate);
-  return lessons.some(existing => {
-    if (existing.id === ignoreId || lessonDay(existing) !== lessonDay(candidate)) return false;
-    const b = lessonInterval(existing);
-    return a.start < b.end && a.end > b.start;
-  });
+function firstStageForGroup(state, groupId) {
+  const group = groupFor(state, groupId);
+  return group?.stages?.[0] || state.framework?.stages?.[0] || 'Stage 1';
 }
 function lessonProgramme(lesson) {
   if (lesson?.programme) return lesson.programme;
@@ -73,26 +71,36 @@ function lessonProgramme(lesson) {
   if (text.includes('pe')) return 'School PE';
   return 'School Swimming';
 }
+function defaultSchoolForProgramme(programme) {
+  if (programme === 'Evening Swim Lessons') return 'Evening Swim Lessons';
+  if (programme === 'Private Lessons') return 'Private Client';
+  return 'New School';
+}
 function visibleLessonsForDay(state, day) {
   const filter = state.timetableFilter || 'All';
   return [...state.lessons].filter(l => lessonDay(l) === day && (filter === 'All' || lessonProgramme(l) === filter));
 }
-function defaultSchoolForProgramme(programme) { return programme === 'Evening Swim Lessons' ? 'Evening Swim Lessons' : programme === 'Private Lessons' ? 'Private Client' : 'New School'; }
-function firstStageForGroup(state, groupId) {
-  const group = groupFor(state, groupId);
-  return group?.stages?.[0] || state.framework?.stages?.[0] || 'Stage 1';
+function stageSortValue(stage) {
+  const match = String(stage || '').match(/Stage\s*(\d+)/i);
+  if (match) return Number(match[1]);
+  if (String(stage).toLowerCase().includes('self rescue')) return 900;
+  return 800;
 }
-function createLearnersFromText(text, lessonId, stage) {
-  return (text || '').split('\n').map(x => x.trim()).filter(Boolean).map((name, index) => ({
-    id: 'p' + Date.now() + index,
-    lesson: lessonId,
-    name,
-    stage,
-    att: 'Present',
-    res: {},
-    dist: { front: '0m', back: '0m' },
-    nc: {}
-  }));
+function groupStages(state, lesson) {
+  const group = groupFor(state, lesson?.groupTemplateId);
+  return [...(group?.stages || [])].sort((a, b) => stageSortValue(a) - stageSortValue(b));
+}
+function criteriaForStage(state, stage) {
+  return state.framework?.criteria?.[stage] || stageCriteria?.[stage] || [];
+}
+function groupCriteria(state, lesson) {
+  if (!lesson || lesson.mode === 'National Curriculum only') return [];
+  const stages = groupStages(state, lesson);
+  return [...new Set(stages.flatMap(stage => criteriaForStage(state, stage)))];
+}
+function groupLabel(state, lesson) {
+  const group = groupFor(state, lesson?.groupTemplateId);
+  return group ? `${group.name} · ${group.detail || group.stages?.join(', ') || 'Group criteria'}` : 'No group selected';
 }
 function distanceNumber(value) { return parseInt(String(value || '0').replace('m', ''), 10) || 0; }
 function allCriteria(state) { return Object.values(state.framework?.criteria || stageCriteria || {}).flat(); }
@@ -109,51 +117,28 @@ function criteriaDistanceMatch(criteria, stroke, metres) {
 }
 function applyDistanceAutoPass(state, currentResults, stroke, metres) {
   const next = { ...(currentResults || {}) };
-  allCriteria(state).forEach(criteria => { if (criteriaDistanceMatch(criteria, stroke, metres)) next[criteria] = 'pass'; });
+  allCriteria(state).forEach(criteria => {
+    if (criteriaDistanceMatch(criteria, stroke, metres)) next[criteria] = 'pass';
+  });
   return next;
 }
-function getDistanceFromCriteria(criteria) {
-  const text = String(criteria || '').toLowerCase();
-  const match = text.match(/(\d+)\s*m/);
-  if (!match) return null;
-  if (text.includes('front') || text.includes('crawl')) return { stroke: 'front', metres: Number(match[1]) };
-  if (text.includes('back') || text.includes('backstroke')) return { stroke: 'back', metres: Number(match[1]) };
-  if (text.includes('choice of stroke') || text.includes('optional') || text.includes('distance achieved')) return { stroke: 'front', metres: Number(match[1]) };
-  return null;
-}
-function stageSortValue(stage) { const match = String(stage || '').match(/Stage\s*(\d+)/i); if (match) return Number(match[1]); if (String(stage).toLowerCase().includes('self rescue')) return 900; return 800; }
-function stageIndex(state, stage) { return (state.framework?.stages || []).indexOf(stage); }
-function criteriaBeforeStage(state, stage) {
-  const stages = state.framework?.stages || [];
-  const target = stageIndex(state, stage);
-  if (target <= 0) return [];
-  return stages.slice(0, target).flatMap(s => state.framework?.criteria?.[s] || stageCriteria[s] || []);
-}
-function applyStageAutoPass(state, currentResults, nextStage) {
-  const next = { ...(currentResults || {}) };
-  criteriaBeforeStage(state, nextStage).forEach(criteria => { next[criteria] = 'pass'; });
-  return next;
-}
-function moveLearnerToGroupStage(state, learner, groupId) {
-  const nextStage = firstStageForGroup(state, groupId);
-  const movedUp = stageIndex(state, nextStage) > stageIndex(state, learner.stage);
-  return { ...learner, stage: nextStage, res: movedUp ? applyStageAutoPass(state, learner.res, nextStage) : learner.res };
-}
-function learnerCriteria(state, lesson, learner) {
-  if (!learner || lesson.mode === 'National Curriculum only') return [];
-  return state.framework.criteria?.[learner.stage] || stageCriteria[learner.stage] || [];
-}
-function lessonSkillOptions(state, lesson, kids) {
-  return [...new Set(kids.flatMap(p => learnerCriteria(state, lesson, p)))];
-}
-function passedCountForLearner(state, learner) {
-  const criteria = state.framework.criteria?.[learner.stage] || stageCriteria[learner.stage] || [];
-  return criteria.filter(c => learner.res?.[c] === 'pass').length;
-}
-function completionText(state, learner) {
-  const criteria = state.framework.criteria?.[learner.stage] || stageCriteria[learner.stage] || [];
+function completionText(state, lesson, learner) {
+  const criteria = groupCriteria(state, lesson);
   if (!criteria.length) return 'NC only';
-  return `${passedCountForLearner(state, learner)}/${criteria.length} passed`;
+  const passed = criteria.filter(c => learner?.res?.[c] === 'pass').length;
+  return `${passed}/${criteria.length} group criteria passed`;
+}
+function createLearnersFromText(text, lessonId, groupStage) {
+  return (text || '').split('\n').map(x => x.trim()).filter(Boolean).map((name, index) => ({
+    id: 'p' + Date.now() + index,
+    lesson: lessonId,
+    name,
+    stage: groupStage,
+    att: 'Present',
+    res: {},
+    dist: { front: '0m', back: '0m' },
+    nc: {}
+  }));
 }
 
 function App() {
@@ -194,118 +179,123 @@ function Home({ state, update }) {
   const percent = Math.round((done / health.length) * 100);
   const groupsCount = groups(state).length;
   return <>
-    <section className='hero stage-hero'><p>Teach. Track. Progress.</p><h1>Poolside assessment without the paperwork fog.</h1><p>Start from today’s lesson, choose a swimmer or a skill, and mark progress in a few taps.</p></section>
+    <section className='hero stage-hero'><p>Teach. Track. Progress.</p><h1>Group-based swim assessment, without the paperwork fog.</h1><p>Create a lesson, choose the group, then assess every swimmer against that group’s criteria.</p></section>
     <section className='quick-actions'>
-      <button className='action-card primary-action' onClick={() => next && update({ screen: 'timetable', active: next.id, step: 'assess', assessmentMode: 'swimmer', selected: state.learners.find(p => p.lesson === next.id && p.att !== 'Absent')?.id || '' })}><span>Start Assessment</span><small>Assess by name or skill</small></button>
+      <button className='action-card primary-action' onClick={() => next && update({ screen: 'timetable', active: next.id, step: 'assess', assessmentMode: 'swimmer', selected: state.learners.find(p => p.lesson === next.id && p.att !== 'Absent')?.id || '' })}><span>Start Assessment</span><small>Use today’s group criteria</small></button>
       <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span><small>Lessons and registers</small></button>
-      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>My Groups</span><small>{groupsCount} group templates</small></button>
-      <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress Overview</span><small>Reports and handover pack</small></button>
+      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>My Groups</span><small>{groupsCount} assessment groups</small></button>
+      <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress Overview</span><small>Who is nearly complete</small></button>
     </section>
-    {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupFor(state, next.groupTemplateId)?.name || 'No group template'}</span><span className='pill'>{next.time}–{addMinutes(next.time, next.duration || 30)}</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open lesson</button></section> : <section className='card'><h2>No lessons yet</h2><p className='muted'>Go to Timetable and create your first session.</p></section>}
-    <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Lessons</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
+    {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupLabel(state, next)}</span><span className='pill'>{groupCriteria(state, next).length} criteria</span><span className='pill'>Register → Assess group → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open lesson</button></section> : <section className='card'><h2>No lessons yet</h2><p className='muted'>Go to Timetable and create your first group session.</p></section>}
+    <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Lessons</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Swimmers</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
     <section className='card'><h2>Build health</h2><p className='muted'>{percent}% checked inside the app</p><button className='btn org' onClick={() => update({ screen: 'health' })}>Open health check</button></section>
   </>;
 }
 
 function Timetable({ state, update }) {
   const day = state.currentDay || 'Tuesday';
-  const filter = state.timetableFilter || 'All';
-  const templateOptions = groups(state);
-  const sorted = visibleLessonsForDay(state, day).sort((a, b) => String(a.time).localeCompare(String(b.time)));
-  const dayCounts = days.reduce((acc, d) => ({ ...acc, [d]: visibleLessonsForDay(state, d).length }), {});
-  function setDay(nextDay) { update({ currentDay: nextDay, draft: null }); }
-  function setFilter(nextFilter) { update({ timetableFilter: nextFilter, draft: null }); }
-  function openDraft(time) { const first = templateOptions[0]?.id || ''; const programme = filter === 'All' ? (state.framework.area || 'School Swimming') : filter; update({ draft: { day, time, duration: 30, programme, school: defaultSchoolForProgramme(programme), year: 'Year 5', className: '', coach: '', name: 'New Lesson', groupTemplateId: first, pastedNames: '', mode: state.framework.mode } }); }
-  function draft(key, value) { update({ draft: { ...state.draft, [key]: value, ...(key === 'programme' ? { school: defaultSchoolForProgramme(value) } : {}) } }); }
-  function createLesson() { if (!state.draft) return; const id = 'l' + Date.now(); const stage = firstStageForGroup(state, state.draft.groupTemplateId); const newLearners = createLearnersFromText(state.draft.pastedNames, id, stage); const lesson = { ...state.draft }; delete lesson.pastedNames; const candidate = { id, ...lesson }; if (lessonOverlaps(state.lessons, candidate, id)) { alert('This lesson would overlap another lesson. Choose a different time or shorter duration.'); return; } update({ lessons: [...state.lessons, candidate], learners: [...state.learners, ...newLearners], active: id, draft: null, audit: [`Created ${state.draft.name} with ${newLearners.length} learner(s)`, ...state.audit] }); }
-  function edit(id, key, value) {
-    const existing = state.lessons.find(l => l.id === id);
-    const candidate = { ...existing, [key]: value };
-    if (['day', 'time', 'duration'].includes(key) && lessonOverlaps(state.lessons, candidate, id)) { alert('That would overlap the next lesson. Adjust the time or duration first.'); return; }
-    if (key === 'groupTemplateId') {
-      const groupName = groupFor(state, value)?.name || 'new group';
-      update({ lessons: state.lessons.map(l => l.id === id ? { ...l, groupTemplateId: value } : l), learners: state.learners.map(p => p.lesson === id ? moveLearnerToGroupStage(state, p, value) : p), audit: [`Moved lesson to ${groupName} and updated learner stages`, ...state.audit] });
-      return;
-    }
-    update({ lessons: state.lessons.map(l => l.id === id ? { ...l, [key]: value } : l) });
+  const sorted = visibleLessonsForDay(state, day).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+  function newLesson() {
+    const groupId = groups(state)[0]?.id || '';
+    const id = 'l' + Date.now();
+    const lesson = { id, day, time: '09:00', duration: 30, school: 'New School', year: 'Year group', className: '', coach: '', name: 'New Group Lesson', programme: 'School Swimming', groupTemplateId: groupId, mode: 'Stages + National Curriculum' };
+    update({ lessons: [...state.lessons, lesson], active: id, step: 'edit', draft: null });
   }
-  function move(id, slots) { const lesson = state.lessons.find(l => l.id === id); const i = timeSlots.indexOf(lesson?.time); edit(id, 'time', timeSlots[clamp(i + slots, 0, timeSlots.length - 1)] || lesson?.time || '09:00'); }
-  function resize(id, delta) { const lesson = state.lessons.find(l => l.id === id); edit(id, 'duration', clamp((Number(lesson?.duration) || 30) + delta, 15, 120)); }
-  function duplicate(lesson) { const id = 'l' + Date.now(); const copy = { ...lesson, id, name: lesson.name + ' copy' }; if (lessonOverlaps(state.lessons, copy, id)) { alert('The copied lesson would overlap another lesson. Move the original or change the time first.'); return; } update({ lessons: [...state.lessons, copy], audit: [`Duplicated ${lesson.name}`, ...state.audit] }); }
-  function removeLesson(id) { const lesson = state.lessons.find(l => l.id === id); update({ lessons: state.lessons.filter(l => l.id !== id), learners: state.learners.filter(p => p.lesson !== id), audit: [`Deleted ${lesson?.name || 'lesson'}`, ...state.audit] }); }
   return <>
-    <section className='hero'><h1>Master timetable</h1><p>Keep everything in one calendar, then filter by programme when you need a cleaner view.</p></section>
-    <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => setDay(d)}>{d} <span className='pill'>{dayCounts[d]}</span></button>)}</div>
-    <section className='card'><h2>Calendar filter</h2><p className='muted'>Use All as your working diary. Use a programme filter when you only want school swimming, evening lessons or private lessons.</p><div className='tabs'>{programmeFilters.map(p => <button key={p} className={filter === p ? 'on' : ''} onClick={() => setFilter(p)}>{p}</button>)}</div></section>
-    <div className='calendar-toolbar card'><div><h2>{filter === 'All' ? `${day} master calendar` : `${day} · ${filter}`}</h2><p className='muted'>Lesson cards span across the fixed time grid. Overlaps are blocked.</p></div><button className='btn org' onClick={() => openDraft('08:00')}>+ Create lesson</button></div>
-    {state.draft && <section className='card draft-panel'><h2>Create lesson on {state.draft.day} at {state.draft.time}</h2><div className='grid'><Select label='Programme' value={state.draft.programme || 'School Swimming'} onChange={v => draft('programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Field label='Lesson name' value={state.draft.name} onChange={v => draft('name', v)} /><Field label='School / Venue' value={state.draft.school} onChange={v => draft('school', v)} /><Field label='Year / Class' value={state.draft.year} onChange={v => draft('year', v)} /><Field label='Class / SEN' value={state.draft.className} onChange={v => draft('className', v)} /><Field label='Coach' value={state.draft.coach} onChange={v => draft('coach', v)} /><Select label='Group template' value={state.draft.groupTemplateId || ''} onChange={v => draft('groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={state.draft.duration} onChange={v => draft('duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Select label='Mode' value={state.draft.mode} onChange={v => draft('mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div><div className='field'><label>Paste learners into this lesson</label><textarea value={state.draft.pastedNames || ''} onChange={e => draft('pastedNames', e.target.value)} placeholder={'Derek Jones\nMia Smith\nAlex Patel'} /></div><div className='event-actions'><button className='btn org' onClick={createLesson}>Create lesson</button><button className='btn' onClick={() => update({ draft: null })}>Cancel</button></div></section>}
-    <section className='calendar-shell'>{timeSlots.map(t => { const items = sorted.filter(l => l.time === t); return <div className='calendar-row' key={t}><button className='calendar-time' onClick={() => openDraft(t)}>{t}</button><div className='calendar-slot' onClick={() => !items.length && openDraft(t)}>{items.length === 0 && <span className='empty-slot'>Tap to add lesson</span>}{items.map(l => <CalendarEvent key={l.id} state={state} lesson={l} open={() => update({ active: l.id, step: 'register' })} move={move} resize={resize} duplicate={duplicate} remove={removeLesson} />)}</div></div>; })}</section>
-    {sorted.length === 0 && <section className='card'><h2>No lessons on {day} for {filter}</h2><p className='muted'>Switch to All, pick another programme, or add a new lesson.</p></section>}
-    <section className='card'><h2>Edit {filter === 'All' ? day + ' sessions' : filter + ' sessions'}</h2><div className='grid'>{sorted.map(l => <LessonEditCard key={l.id} state={state} lesson={l} edit={edit} templateOptions={templateOptions} />)}</div></section>
+    <section className='hero'><p>Lesson plan</p><h1>Choose the group first. Assess that group criteria.</h1><p>No separate initial assessment screen. The group is the assessment level.</p></section>
+    <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => update({ currentDay: d })}>{d}</button>)}</div>
+    <section className='card calendar-toolbar'><div><h2>{day}</h2><p className='muted'>Filtered by programme and organised by lesson group.</p></div><div><Select label='Programme filter' value={state.timetableFilter || 'All'} onChange={v => update({ timetableFilter: v })} options={programmeFilters.map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={newLesson}>+ Add group lesson</button></div></section>
+    {sorted.length ? sorted.map(lesson => <LessonCard key={lesson.id} state={state} update={update} lesson={lesson} />) : <section className='card'><h2>No lessons on {day}</h2><p className='muted'>Add a group lesson to start building the timetable.</p><button className='btn org' onClick={newLesson}>+ Add group lesson</button></section>}
   </>;
 }
 
-function CalendarEvent({ state, lesson, open, move, resize, duplicate, remove }) {
-  const endTime = addMinutes(lesson.time, lesson.duration || 30);
-  const blockHeight = Math.max(44, ((Number(lesson.duration) || 30) / 15) * 50 - 12);
-  return <div className='calendar-event' style={{ height: blockHeight }} onClick={e => e.stopPropagation()}><div className='event-head'><strong>{lesson.name}</strong><button className='btn' onClick={open}>Open</button></div><p>{lesson.school} · {lesson.year}{lesson.className ? ` · ${lesson.className}` : ''}</p><span className='pill'>{lessonProgramme(lesson)}</span><span className='pill'>{lesson.time}–{endTime}</span><span className='pill'>{groupFor(state, lesson.groupTemplateId)?.name || 'No template'}</span><span className='pill'>{lesson.duration || 30} mins</span><div className='event-actions'><button className='btn' onClick={() => move(lesson.id, -1)}>↑ 15</button><button className='btn' onClick={() => move(lesson.id, 1)}>↓ 15</button><button className='btn' onClick={() => resize(lesson.id, -15)}>-15m</button><button className='btn' onClick={() => resize(lesson.id, 15)}>+15m</button><button className='btn' onClick={() => duplicate(lesson)}>Duplicate</button><button className='btn' onClick={() => remove(lesson.id)}>Delete</button></div></div>;
-}
-function LessonEditCard({ state, lesson, edit, templateOptions }) {
-  return <div className='card'><h3>{lesson.time} · {lesson.name}</h3><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => edit(lesson.id, 'programme', v)} options={(programmeAreas || []).map(x => ({ value: x, label: x }))} /><Select label='Day' value={lessonDay(lesson)} onChange={v => edit(lesson.id, 'day', v)} options={days.map(d => ({ value: d, label: d }))} /><Select label='Time' value={lesson.time} onChange={v => edit(lesson.id, 'time', v)} options={timeSlots.map(x => ({ value: x, label: x }))} /><Select label='Group template' value={lesson.groupTemplateId || ''} onChange={v => edit(lesson.id, 'groupTemplateId', v)} options={templateOptions.map(g => ({ value: g.id, label: `${g.name} · ${g.detail}` }))} /><Select label='Duration' value={lesson.duration || 30} onChange={v => edit(lesson.id, 'duration', Number(v))} options={durations.map(x => ({ value: x, label: `${x} mins` }))} /><Field label='School / Venue' value={lesson.school} onChange={v => edit(lesson.id, 'school', v)} /><Field label='Year / Class' value={lesson.year} onChange={v => edit(lesson.id, 'year', v)} /><Field label='Lesson name' value={lesson.name} onChange={v => edit(lesson.id, 'name', v)} /><Field label='Coach' value={lesson.coach || ''} onChange={v => edit(lesson.id, 'coach', v)} /><Field label='Class / SEN' value={lesson.className || ''} onChange={v => edit(lesson.id, 'className', v)} /><Select label='Mode' value={lesson.mode} onChange={v => edit(lesson.id, 'mode', v)} options={modes.map(x => ({ value: x, label: x }))} /></div>;
+function LessonCard({ state, update, lesson }) {
+  const swimmers = state.learners.filter(p => p.lesson === lesson.id);
+  return <section className='card lesson'><div className='time'>{lesson.time}</div><div><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {lesson.school} · {lesson.year}</p><span className='pill'>{groupLabel(state, lesson)}</span><span className='pill'>{swimmers.length} swimmers</span><span className='pill'>{groupCriteria(state, lesson).length} criteria</span></div><div className='score-buttons'><button className='btn' onClick={() => update({ active: lesson.id, step: 'edit' })}>Edit</button><button className='btn org' onClick={() => update({ active: lesson.id, step: 'register' })}>Open</button></div></section>;
 }
 
 function Lesson({ state, update, lesson }) {
-  const kids = state.learners.filter(p => p.lesson === lesson.id);
-  const present = kids.filter(p => p.att !== 'Absent');
-  const selected = kids.find(p => p.id === state.selected) || present[0];
+  const currentStep = state.step || 'register';
   return <>
-    <section className='hero'><p>{lessonDay(lesson)} · {lesson.time} · {lessonProgramme(lesson)} · {lesson.school}</p><h1>{lesson.name}</h1><p>{groupFor(state, lesson.groupTemplateId)?.name || 'No group template'} · {lesson.mode}</p><div className='steps'><span className={state.step === 'register' ? 'on' : ''}>1 Register</span><span className={state.step === 'assess' ? 'on' : ''}>2 Assess</span><span className={state.step === 'save' ? 'on' : ''}>3 Save</span></div></section>
-    {state.step === 'register' && <Register state={state} update={update} lesson={lesson} kids={kids} />}
-    {state.step === 'assess' && (selected ? <Assess state={state} update={update} lesson={lesson} kids={present} selected={selected} /> : <section className='card'><h2>No present learners</h2><p className='muted'>Go back to the register and add or mark learners present.</p><button className='btn org' onClick={() => update({ step: 'register' })}>Back to register</button></section>)}
-    {state.step === 'save' && <><section className='card'><h2>Lesson saved</h2><p>{present.length} present / late</p></section><div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Make changes</button><button className='btn org' onClick={() => update({ step: 'list', screen: 'timetable', audit: ['Saved lesson', ...state.audit] })}>Finish</button></div></>}
+    <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupLabel(state, lesson)} · {groupCriteria(state, lesson).length} group criteria</p><div className='steps'>{['edit', 'register', 'assess', 'save'].map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess group' : step}</span>)}</div></section>
+    {currentStep === 'edit' && <LessonSetup state={state} update={update} lesson={lesson} />}
+    {currentStep === 'register' && <Register state={state} update={update} lesson={lesson} />}
+    {currentStep === 'assess' && <Assess state={state} update={update} lesson={lesson} />}
+    {currentStep === 'save' && <SaveLesson state={state} update={update} lesson={lesson} />}
   </>;
 }
-function Register({ state, update, lesson, kids }) {
-  function add() { const text = document.getElementById('names')?.value || ''; const newLearners = createLearnersFromText(text, lesson.id, firstStageForGroup(state, lesson.groupTemplateId)); update({ learners: [...state.learners, ...newLearners], audit: [`Added ${newLearners.length} learner(s)`, ...state.audit] }); }
-  function attendance(id, value) { update({ learners: state.learners.map(p => p.id === id ? { ...p, att: value } : p) }); }
-  return <><section className='card'><h2>Register</h2><p className='muted'>Paste names one per line for any children missing from this lesson.</p><textarea id='names' placeholder={'Derek Jones\nMia Smith'} /><button className='btn' onClick={add}>Add names</button></section>{kids.length === 0 && <section className='card'><h2>No learners yet</h2><p className='muted'>Paste names above to create this register.</p></section>}{kids.map(p => <section className='card register-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{p.stage} · {completionText(state, p)}</p></div><div>{attendanceOptions.map(v => <button className={'btn ' + (p.att === v ? 'org' : '')} key={v} onClick={() => attendance(p.id, v)}>{v}</button>)}</div></section>)}<div className='footer'><button className='btn org' onClick={() => update({ step: 'assess', assessmentMode: 'swimmer', selected: kids.find(p => p.att !== 'Absent')?.id || '' })}>Confirm register & assess</button></div></>;
+
+function LessonSetup({ state, update, lesson }) {
+  const templateOptions = groups(state).map(g => ({ value: g.id, label: `${g.name} — ${g.detail || g.stages?.join(', ') || 'Group criteria'}` }));
+  const criteria = groupCriteria(state, lesson);
+  function patchLesson(patch) {
+    let changed = { ...lesson, ...patch };
+    let learners = state.learners;
+    if (patch.groupTemplateId) {
+      const groupStage = firstStageForGroup(state, patch.groupTemplateId);
+      learners = learners.map(p => p.lesson === lesson.id ? { ...p, stage: groupStage } : p);
+    }
+    update({ lessons: state.lessons.map(l => l.id === lesson.id ? changed : l), learners });
+  }
+  function deleteLesson() {
+    update({ lessons: state.lessons.filter(l => l.id !== lesson.id), learners: state.learners.filter(p => p.lesson !== lesson.id), step: 'list', active: '' });
+  }
+  return <>
+    <section className='card assessment-choice'><h2>Lesson setup</h2><p className='muted'>Pick the programme and group. Every swimmer in this lesson will be assessed against this group’s criteria.</p><div className='grid2'><Select label='Programme' value={lesson.programme || 'School Swimming'} onChange={v => patchLesson({ programme: v, school: defaultSchoolForProgramme(v) })} options={programmeAreas.map(x => ({ value: x, label: x }))} /><Select label='Assessment group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Lesson name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Field label='Coach' value={lesson.coach || ''} onChange={v => patchLesson({ coach: v })} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
+    <section className='card'><h2>Group criteria preview</h2><p className='muted'>{groupLabel(state, lesson)}</p>{criteria.length ? criteria.map(c => <div className='folder' key={c}>• {c}</div>) : <p className='muted'>This lesson is National Curriculum only.</p>}</section>
+    <div className='footer'><button className='btn' onClick={() => update({ step: 'list' })}>Back to timetable</button><button className='btn' onClick={deleteLesson}>Delete</button><button className='btn org' onClick={() => update({ step: 'register' })}>Register swimmers</button></div>
+  </>;
 }
 
-function Assess({ state, update, lesson, kids, selected }) {
-  const stageOptions = [...(state.framework?.stages || [])].sort((a, b) => stageSortValue(a) - stageSortValue(b));
-  const mode = state.assessmentMode || 'swimmer';
-  const skillOptions = lessonSkillOptions(state, lesson, kids);
-  const selectedSkill = skillOptions.includes(state.selectedSkill) ? state.selectedSkill : (skillOptions[0] || '');
-  const criteria = learnerCriteria(state, lesson, selected);
-
-  function changeLearner(id, patch) { update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) }); }
-  function changeSelected(patch) { changeLearner(selected.id, patch); }
-  function setDistanceForLearner(learner, stroke, value) {
-    const metres = distanceNumber(value);
-    const ncKey = stroke === 'front' ? '25m front crawl' : '25m backstroke';
-    changeLearner(learner.id, { dist: { ...learner.dist, [stroke]: value }, res: applyDistanceAutoPass(state, learner.res, stroke, metres), nc: { ...learner.nc, [ncKey]: metres >= 25 } });
+function Register({ state, update, lesson }) {
+  const kids = state.learners.filter(p => p.lesson === lesson.id);
+  const [names, setNames] = useState('');
+  function changeLearner(id, patch) {
+    update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) });
   }
-  function setStage(nextStage) {
-    const movedUp = stageIndex(state, nextStage) > stageIndex(state, selected.stage);
-    changeSelected({ stage: nextStage, res: movedUp ? applyStageAutoPass(state, selected.res, nextStage) : selected.res });
+  function addNames() {
+    const newKids = createLearnersFromText(names, lesson.id, firstStageForGroup(state, lesson.groupTemplateId));
+    if (!newKids.length) return;
+    update({ learners: [...state.learners, ...newKids], selected: newKids[0].id });
+    setNames('');
+  }
+  function removeLearner(id) {
+    update({ learners: state.learners.filter(p => p.id !== id), selected: state.selected === id ? '' : state.selected });
+  }
+  return <>
+    <section className='card'><h2>Register swimmers</h2><p className='muted'>These swimmers will all use {groupLabel(state, lesson)}.</p>{kids.map(p => <div className='criteria register-row' key={p.id}><div><b>{p.name}</b><p className='muted'>{p.att} · {completionText(state, lesson, p)}</p></div><div className='score-buttons'>{attendanceOptions.map(option => <button key={option} className={'score-btn ' + (p.att === option ? 'on' : '')} onClick={() => changeLearner(p.id, { att: option })}>{option}</button>)}<button className='score-btn' onClick={() => removeLearner(p.id)}>Remove</button></div></div>)}</section>
+    <section className='card'><h2>Add swimmers</h2><p className='muted'>Paste one name per line. No stage needed — the lesson group controls the criteria.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names to this group</button></section>
+    <div className='footer'><button className='btn' onClick={() => update({ step: 'edit' })}>Back</button><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess group</button></div>
+  </>;
+}
+
+function Assess({ state, update, lesson }) {
+  const kids = state.learners.filter(p => p.lesson === lesson.id && p.att !== 'Absent');
+  const criteria = groupCriteria(state, lesson);
+  const selected = kids.find(p => p.id === state.selected) || kids[0];
+  const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
+  const mode = state.assessmentMode || 'swimmer';
+  function changeLearner(id, patch) {
+    update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) });
   }
   function scoreLearner(learner, criteriaItem, value) {
-    const distance = getDistanceFromCriteria(criteriaItem);
-    if (value === 'pass' && distance) {
-      const current = distanceNumber(learner.dist?.[distance.stroke]);
-      const metres = Math.max(current, distance.metres);
-      const valueText = `${metres}m`;
-      const ncKey = distance.stroke === 'front' ? '25m front crawl' : '25m backstroke';
-      changeLearner(learner.id, { dist: { ...learner.dist, [distance.stroke]: valueText }, res: applyDistanceAutoPass(state, { ...learner.res, [criteriaItem]: value }, distance.stroke, metres), nc: { ...learner.nc, [ncKey]: metres >= 25 } });
-    } else {
-      changeLearner(learner.id, { res: { ...learner.res, [criteriaItem]: value } });
-    }
+    if (!criteriaItem || !learner) return;
+    changeLearner(learner.id, { res: { ...(learner.res || {}), [criteriaItem]: value } });
   }
-
+  function setDistanceForLearner(learner, stroke, value) {
+    const metres = distanceNumber(value);
+    changeLearner(learner.id, {
+      dist: { ...(learner.dist || {}), [stroke]: value },
+      res: applyDistanceAutoPass(state, learner.res, stroke, metres)
+    });
+  }
+  if (!kids.length) {
+    return <><section className='card'><h2>No swimmers to assess</h2><p className='muted'>Mark swimmers as present on the register first.</p></section><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back to register</button></div></>;
+  }
   return <>
-    <section className='card assessment-choice'><h2>Choose assessment flow</h2><p className='muted'>Use names when you are focusing on one swimmer. Use skills when the whole group is doing the same task.</p><div className='assess-mode-grid'>{assessmentModes.map(item => <button key={item.id} className={'assess-mode ' + (mode === item.id ? 'on' : '')} onClick={() => update({ assessmentMode: item.id, selectedSkill: selectedSkill || state.selectedSkill })}><strong>{item.title}</strong><small>{item.detail}</small></button>)}</div></section>
-    {mode === 'swimmer' && <div className='grid2 assessment-layout'><section className='card learner-rail'><h2>Swimmers</h2>{kids.map(p => <button className={'learner-button ' + (p.id === selected.id ? 'on' : '')} key={p.id} onClick={() => update({ selected: p.id })}><span>{p.name}</span><small>{p.stage} · {completionText(state, p)}</small></button>)}</section><section className='card assessment-card'><div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{selected.stage} · {completionText(state, selected)}</p></div><span className='pill'>By swimmer</span></div>{lesson.mode !== 'National Curriculum only' && <><Select label='Current working stage' value={selected.stage} onChange={setStage} options={stageOptions.map(x => ({ value: x, label: x }))} /><p className='muted'>Moving up auto-passes all earlier stage criteria, but moving down does not erase evidence.</p></>}<div className='grid2'><Distance label='Distance front' value={selected.dist.front} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist.back} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <SkillScore key={c} criteria={c} value={selected.res?.[c]} onScore={v => scoreLearner(selected, c, v)} />)}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc[item]} onChange={e => changeSelected({ nc: { ...selected.nc, [item]: e.target.checked } })} /> {item}</label>)}</section></div>}
-    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head'><div><h2>Assess by skill</h2><p className='muted'>Pick one skill and mark every present swimmer from the same screen.</p></div><span className='pill'>By skill</span></div>{skillOptions.length ? <><Select label='Skill to assess' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={skillOptions.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => { const hasSkill = learnerCriteria(state, lesson, p).includes(selectedSkill); return <div className={'skill-row ' + (!hasSkill ? 'is-muted' : '')} key={p.id}><div><h3>{p.name}</h3><p className='muted'>{p.stage} · {hasSkill ? completionText(state, p) : 'Skill not in current stage'}</p></div><div className='score-buttons'>{scores.map(v => <button disabled={!hasSkill} className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreLabels[v]}</button>)}</div></div>; })}</div></> : <p className='muted'>This lesson is currently National Curriculum only, so there are no stage skills to group-assess.</p>}</section>}
+    <section className='card assessment-choice'><h2>Assess group criteria</h2><p className='muted'>{groupLabel(state, lesson)}. Choose a swimmer or choose one skill for the whole group.</p><div className='assess-mode-grid'>{assessmentModes.map(item => <button key={item.id} className={'assess-mode ' + (mode === item.id ? 'on' : '')} onClick={() => update({ assessmentMode: item.id, selectedSkill })}><strong>{item.title}</strong><small>{item.detail}</small></button>)}</div></section>
+    {mode === 'swimmer' && selected && <div className='grid2 assessment-layout'><section className='card learner-rail'><h2>Swimmers</h2>{kids.map(p => <button className={'learner-button ' + (p.id === selected.id ? 'on' : '')} key={p.id} onClick={() => update({ selected: p.id })}><span>{p.name}</span><small>{completionText(state, lesson, p)}</small></button>)}</section><section className='card assessment-card'><div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{groupLabel(state, lesson)} · {completionText(state, lesson, selected)}</p></div><span className='pill'>By swimmer</span></div>{lesson.mode !== 'National Curriculum only' && <><div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div><p className='muted'>Distance auto-pass: choosing 15m also passes matching 5m and 10m skills for that stroke.</p>{criteria.map(c => <SkillScore key={c} criteria={c} value={selected.res?.[c]} onScore={v => scoreLearner(selected, c, v)} />)}</>}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}</section></div>}
+    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head'><div><h2>Assess one group skill</h2><p className='muted'>Pick a skill from this group criteria and mark each present swimmer.</p></div><span className='pill'>By skill</span></div>{criteria.length ? <><Select label='Group skill' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={criteria.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => <div className='skill-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{completionText(state, lesson, p)}</p></div><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreLabels[v]}</button>)}</div></div>)}</div></> : <p className='muted'>This lesson is National Curriculum only, so there are no group skills to assess here.</p>}</section>}
     <div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button><button className='btn org' onClick={() => update({ step: 'save' })}>Save lesson</button></div>
   </>;
 }
@@ -314,42 +304,99 @@ function SkillScore({ criteria, value, onScore }) {
   return <div className='criteria skill-card'><b>{criteria}</b><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (value === v ? 'on' : '')} key={v} onClick={() => onScore(v)}>{scoreLabels[v]}</button>)}</div></div>;
 }
 
+function SaveLesson({ state, update, lesson }) {
+  const kids = state.learners.filter(p => p.lesson === lesson.id);
+  const present = kids.filter(p => p.att !== 'Absent');
+  const complete = present.filter(p => groupCriteria(state, lesson).length && groupCriteria(state, lesson).every(c => p.res?.[c] === 'pass'));
+  return <>
+    <section className='card'><h2>Lesson saved</h2><p className='muted'>{lesson.name} · {groupLabel(state, lesson)}</p><div className='grid stat-grid'><div className='card stat-card'><h2>{present.length}</h2><p className='muted'>Present</p></div><div className='card stat-card'><h2>{complete.length}</h2><p className='muted'>Completed group criteria</p></div><div className='card stat-card'><h2>{groupCriteria(state, lesson).length}</h2><p className='muted'>Criteria assessed</p></div></div></section>
+    <section className='card'><h2>Group summary</h2>{present.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>
+    <div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Back to assessment</button><button className='btn org' onClick={() => update({ step: 'list', active: '' })}>Finish</button></div>
+  </>;
+}
+
 function HealthCheck({ state, update }) {
   const items = useMemo(() => getHealthItems(state), [state]);
   const done = items.filter(item => item.done).length;
   const failed = items.filter(item => !item.done);
   const percent = Math.round((done / items.length) * 100);
-  const testSteps = ['Load app without blank screen', 'Reset app', 'Open Home', 'Open Timetable', 'Switch Monday-Friday tabs', 'Create lesson from time slot', 'Paste learners into lesson', 'Open lesson', 'Complete register', 'Switch assessment by swimmer', 'Switch assessment by skill', 'Assess a learner', 'Save lesson', 'Open Reports', 'Open Settings'];
-  return <><section className='hero'><p>Priority 1</p><h1>Stability health check</h1><p>{percent}% of automatic checks are passing.</p></section><div className='grid'><div className='card'><h2>{percent}%</h2><p className='muted'>Automatic stability score</p></div><div className='card'><h2>{done}/{items.length}</h2><p className='muted'>Checks passing</p></div><div className='card'><h2>{state.audit.length}</h2><p className='muted'>Audit entries</p></div></div><section className='card'><h2>{failed.length ? 'Priority 1 needs checks' : 'Priority 1 ready for manual sign-off'}</h2><p className='muted'>{failed.length ? 'Fix the warnings below before moving on.' : 'Run the manual test route once on your phone, then move to Priority 2.'}</p></section><section className='card'><h2>✅ Passed</h2>{items.filter(item => item.done).map(item => <div className='folder' key={item.label}>✅ {item.label}<p className='muted'>{item.detail}</p></div>)}</section><section className='card'><h2>⚠️ Needs fixing</h2>{failed.length ? failed.map(item => <div className='folder' key={item.label}>⚠️ {item.label}<p className='muted'>{item.detail}</p></div>) : <div className='folder'>✅ Nothing currently flagged.</div>}</section><section className='card'><h2>Manual live test route</h2><p className='muted'>Use this after Vercel redeploys. If every step works, Priority 1 is effectively complete.</p>{testSteps.map((step, index) => <div className='folder' key={step}>#{index + 1} {step}</div>)}</section><div className='footer'><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset app data</button><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Test timetable</button></div></>;
+  const testSteps = ['Open Home', 'Open Timetable', 'Create or edit a group lesson', 'Choose an assessment group', 'Paste swimmers', 'Complete register', 'Assess by swimmer', 'Assess by skill', 'Save lesson', 'Open Reports', 'Open Settings'];
+  return <><section className='hero'><p>Priority 1</p><h1>Stability health check</h1><p>{percent}% of automatic checks are passing.</p></section><div className='grid'><div className='card'><h2>{percent}%</h2><p className='muted'>Automatic stability score</p></div><div className='card'><h2>{done}/{items.length}</h2><p className='muted'>Checks passing</p></div><div className='card'><h2>{state.audit?.length || 0}</h2><p className='muted'>Audit entries</p></div></div><section className='card'><h2>{failed.length ? 'Needs checks' : 'Ready for manual sign-off'}</h2><p className='muted'>{failed.length ? 'Fix the warnings below before moving on.' : 'Run the manual test route once on your phone.'}</p></section><section className='card'><h2>✅ Passed</h2>{items.filter(item => item.done).map(item => <div className='folder' key={item.label}>✅ {item.label}<p className='muted'>{item.detail}</p></div>)}</section><section className='card'><h2>⚠️ Needs fixing</h2>{failed.length ? failed.map(item => <div className='folder' key={item.label}>⚠️ {item.label}<p className='muted'>{item.detail}</p></div>) : <div className='folder'>✅ Nothing currently flagged.</div>}</section><section className='card'><h2>Manual live test route</h2>{testSteps.map((step, index) => <div className='folder' key={step}>#{index + 1} {step}</div>)}</section><div className='footer'><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset app data</button><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Test timetable</button></div></>;
 }
 function getHealthItems(state) {
   const activeExists = !state.active || state.lessons.some(l => l.id === state.active);
+  const everyLessonHasGroup = state.lessons.every(l => !!l.groupTemplateId);
   return [
     { label: 'App state loads', done: !!state && typeof state === 'object', detail: 'React has loaded a usable state object.' },
-    { label: 'Lessons are available', done: Array.isArray(state.lessons), detail: `${state.lessons?.length || 0} lesson(s) currently loaded.` },
-    { label: 'Lesson fields are safe', done: state.lessons.every(l => l.id && l.day && l.time && l.name && l.duration), detail: 'Every lesson has id, day, time, name and duration.' },
-    { label: 'Weekly day tabs are valid', done: days.includes(state.currentDay || 'Tuesday'), detail: `Selected day is ${state.currentDay || 'Tuesday'}.` },
-    { label: 'Programme filter is valid', done: programmeFilters.includes(state.timetableFilter || 'All'), detail: `Calendar filter is ${state.timetableFilter || 'All'}.` },
-    { label: 'Assessment mode is valid', done: ['swimmer', 'skill'].includes(state.assessmentMode || 'swimmer'), detail: `Assessment mode is ${state.assessmentMode || 'swimmer'}.` },
-    { label: 'Framework stages exist', done: Array.isArray(state.framework?.stages) && state.framework.stages.length > 0, detail: `${state.framework?.stages?.length || 0} stage(s) available.` },
+    { label: 'Lessons are available', done: Array.isArray(state.lessons), detail: `${state.lessons?.length || 0} lesson(s) loaded.` },
+    { label: 'Lessons use groups', done: everyLessonHasGroup, detail: 'Every lesson has an assessment group.' },
     { label: 'Group templates exist', done: groups(state).length > 0, detail: `${groups(state).length} group template(s) available.` },
-    { label: 'Learner data is safe', done: Array.isArray(state.learners) && state.learners.every(p => p.id && p.name && p.lesson && p.stage && p.att), detail: `${state.learners?.length || 0} learner(s) currently loaded.` },
+    { label: 'Group criteria can be calculated', done: state.lessons.every(l => l.mode === 'National Curriculum only' || groupCriteria(state, l).length > 0), detail: 'Lesson criteria comes from the selected group.' },
+    { label: 'Learner data is safe', done: Array.isArray(state.learners) && state.learners.every(p => p.id && p.name && p.lesson && p.att), detail: `${state.learners?.length || 0} swimmer(s) loaded.` },
     { label: 'Active lesson is valid', done: activeExists, detail: activeExists ? 'The selected lesson exists or none is selected.' : 'Selected lesson is missing.' },
+    { label: 'Assessment mode is valid', done: ['swimmer', 'skill'].includes(state.assessmentMode || 'swimmer'), detail: `Assessment mode is ${state.assessmentMode || 'swimmer'}.` },
     { label: 'National Curriculum items exist', done: nationalCurriculum.length >= 4, detail: `${nationalCurriculum.length} NC item(s) available.` },
     { label: 'Reports pack state exists', done: !!state.pack && typeof state.pack === 'object', detail: 'End-of-term pack settings are present.' },
     { label: 'Settings data exists', done: Array.isArray(state.staff) && Array.isArray(state.certificates), detail: 'Staff permissions and certificate template data are present.' },
-    { label: 'Audit log exists', done: Array.isArray(state.audit), detail: `${state.audit?.length || 0} audit item(s) currently saved.` }
+    { label: 'Audit log exists', done: Array.isArray(state.audit), detail: `${state.audit?.length || 0} audit item(s) saved.` }
   ];
 }
 
-function Reports({ state, update }) { return <><section className='hero'><h1>End-of-Term Pack</h1><p>One downloadable pack with reports, certificates, registers and summaries.</p></section><div className='grid2'><section className='card'><h2>Pack options</h2>{Object.keys(state.pack).filter(k => typeof state.pack[k] === 'boolean').map(k => <label className='pill' key={k}><input type='checkbox' checked={state.pack[k]} onChange={e => update({ pack: { ...state.pack, [k]: e.target.checked } })} /> {k}</label>)}<Field label='Send to' value={state.pack.email} onChange={v => update({ pack: { ...state.pack, email: v } })} /><Field label='CC' value={state.pack.cc} onChange={v => update({ pack: { ...state.pack, cc: v } })} /><Select label='Delivery method' value={state.pack.method} onChange={v => update({ pack: { ...state.pack, method: v } })} options={['Secure download link', 'Email attachment', 'Download only'].map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={() => update({ audit: [`Pack queued for ${state.pack.email}`, ...state.audit] })}>Queue send demo</button></section><section className='card'><h2>School Handover Pack.zip</h2>{Object.keys(state.pack).filter(k => state.pack[k] === true).map(k => <div className='folder' key={k}>📁 {k}</div>)}</section></div></>; }
-function Settings({ state, update }) { return <><section className='hero'><h1>Settings</h1><p>Frameworks, group templates, certificates, permissions and audit log.</p></section><div className='tabs'>{['framework', 'groups', 'certificates', 'permissions', 'audit'].map(t => <button key={t} className={state.tab === t ? 'on' : ''} onClick={() => update({ tab: t })}>{t}</button>)}</div>{(state.tab || 'framework') === 'framework' && <Framework state={state} update={update} />}{state.tab === 'groups' && <Groups state={state} update={update} />}{state.tab === 'certificates' && <Certificates state={state} update={update} />}{state.tab === 'permissions' && <Permissions state={state} update={update} />}{state.tab === 'audit' && <section className='card'><h2>Audit log</h2>{state.audit.map((a, i) => <p key={i}>• {a}</p>)}</section>}</>; }
-function Framework({ state, update }) { function setCriteria(stage, text) { update({ framework: { ...state.framework, criteria: { ...state.framework.criteria, [stage]: text.split('\n').map(x => x.trim()).filter(Boolean) } } }); } function addStage() { const name = 'New Stage ' + (state.framework.stages.length + 1); update({ framework: { ...state.framework, stages: [...state.framework.stages, name], criteria: { ...state.framework.criteria, [name]: [] } } }); } return <section className='card'><h2>Assessment Framework</h2><Field label='Name' value={state.framework.name} onChange={v => update({ framework: { ...state.framework, name: v } })} /><button className='btn org' onClick={addStage}>+ Add stage/section</button><h3>Stages and criteria</h3>{state.framework.stages.map(stage => <div className='card' key={stage}><h3>{stage}</h3><textarea value={(state.framework.criteria?.[stage] || []).join('\n')} onChange={e => setCriteria(stage, e.target.value)} /></div>)}</section>; }
-function Groups({ state, update }) { function edit(i, key, value) { const groupTemplates = [...groups(state)]; groupTemplates[i] = { ...groupTemplates[i], [key]: value }; update({ framework: { ...state.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) } }); } function addGroup() { const groupTemplates = [...groups(state), { id: 'g' + Date.now(), name: 'New Group', detail: 'Choose stages', stages: [], colour: 'blue' }]; update({ framework: { ...state.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) } }); } return <section className='card'><h2>Group templates</h2><button className='btn org' onClick={addGroup}>+ Add group</button>{groups(state).map((g, i) => <div className='card' key={g.id}><Field label='Group name' value={g.name} onChange={v => edit(i, 'name', v)} /><Field label='Detail' value={g.detail || ''} onChange={v => edit(i, 'detail', v)} /><div>{state.framework.stages.map(stage => <label className='pill' key={stage}><input type='checkbox' checked={g.stages?.includes(stage)} onChange={e => { const next = e.target.checked ? [...(g.stages || []), stage] : (g.stages || []).filter(x => x !== stage); edit(i, 'stages', next); }} /> {stage}</label>)}</div></div>)}</section>; }
-function Certificates({ state, update }) { function addCert() { update({ certificates: [...state.certificates, { id: 'cert' + Date.now(), name: 'New Certificate Template', rule: 'Highest achieved stage', font: 'Serif', size: 32, groupBy: 'Year group' }] }); } return <section className='card'><h2>Certificate templates</h2><button className='btn org' onClick={addCert}>+ Add certificate template</button>{state.certificates.map(c => <div className='card' key={c.id}><div className='grid'><Field label='Name' value={c.name} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, name: v } : x) })} /><Select label='Rule' value={c.rule} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, rule: v } : x) })} options={['Highest achieved stage', 'National Curriculum achieved', 'Selected award only'].map(x => ({ value: x, label: x }))} /><Select label='Group by' value={c.groupBy} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, groupBy: v } : x) })} options={['Year group', 'Class/group', 'Award', 'All in one PDF'].map(x => ({ value: x, label: x }))} /><Field label='Font' value={c.font} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, font: v } : x) })} /><Field label='Font size' value={String(c.size)} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, size: Number(v) || 32 } : x) })} /></div></div>)}</section>; }
-function Permissions({ state, update }) { const keys = ['sessions', 'groups', 'learners', 'assess', 'export', 'framework', 'certificates']; return <section className='card'><h2>Staff permissions</h2>{state.staff.map((p, i) => <div className='card' key={p.id}><h3>{p.name}</h3><p className='muted'>{p.role}</p>{keys.map(k => <label className='pill' key={k}><input type='checkbox' checked={!!p[k]} onChange={e => { const staff = [...state.staff]; staff[i] = { ...staff[i], [k]: e.target.checked }; update({ staff, audit: [`Updated ${p.name} permission: ${k}`, ...state.audit] }); }} /> {k}</label>)}</div>)}</section>; }
-function Distance({ label, value, onChange }) { return <Select label={label} value={value} onChange={onChange} options={distances.map(x => ({ value: x, label: x }))} />; }
-function Field({ label, value, onChange }) { return <div className='field'><label>{label}</label><input value={value || ''} onChange={e => onChange(e.target.value)} /></div>; }
-function Select({ label, value, onChange, options }) { return <div className='field'><label>{label}</label><select value={value || ''} onChange={e => onChange(e.target.value)}>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>; }
+function Reports({ state, update }) {
+  const lessons = state.lessons.map(lesson => {
+    const swimmers = state.learners.filter(p => p.lesson === lesson.id);
+    const criteria = groupCriteria(state, lesson);
+    const complete = criteria.length ? swimmers.filter(p => criteria.every(c => p.res?.[c] === 'pass')).length : 0;
+    return { lesson, swimmers, criteria, complete };
+  });
+  return <><section className='hero'><h1>Progress Overview</h1><p>See each group session, how many criteria are being assessed, and who is nearly complete.</p></section><div className='grid2'>{lessons.map(({ lesson, swimmers, criteria, complete }) => <section className='card' key={lesson.id}><h2>{lesson.name}</h2><p className='muted'>{groupLabel(state, lesson)}</p><span className='pill'>{swimmers.length} swimmers</span><span className='pill'>{criteria.length} criteria</span><span className='pill'>{complete} complete</span>{swimmers.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>)}</div><section className='card'><h2>End-of-term pack</h2><p className='muted'>This will later become the printable/export pack. For now, it is showing live progress from group criteria.</p><button className='btn org' onClick={() => update({ audit: [`Progress pack checked`, ...(state.audit || [])] })}>Log pack check</button></section></>;
+}
+
+function Settings({ state, update }) {
+  const tabs = ['groups', 'framework', 'certificates', 'permissions', 'audit'];
+  return <><section className='hero'><h1>Settings</h1><p>Set the groups first. Lessons then assess swimmers against those group criteria.</p></section><div className='tabs'>{tabs.map(t => <button key={t} className={(state.tab || 'groups') === t ? 'on' : ''} onClick={() => update({ tab: t })}>{t}</button>)}</div>{(state.tab || 'groups') === 'groups' && <Groups state={state} update={update} />}{state.tab === 'framework' && <Framework state={state} update={update} />}{state.tab === 'certificates' && <Certificates state={state} update={update} />}{state.tab === 'permissions' && <Permissions state={state} update={update} />}{state.tab === 'audit' && <section className='card'><h2>Audit log</h2>{(state.audit || []).map((a, i) => <p key={i}>• {a}</p>)}</section>}</>;
+}
+
+function Groups({ state, update }) {
+  function edit(i, key, value) {
+    const groupTemplates = [...groups(state)];
+    groupTemplates[i] = { ...groupTemplates[i], [key]: value };
+    update({ framework: { ...state.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) } });
+  }
+  function addGroup() {
+    const groupTemplates = [...groups(state), { id: 'g' + Date.now(), name: 'New Group', detail: 'Choose stages/criteria', stages: [], colour: 'blue' }];
+    update({ framework: { ...state.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) } });
+  }
+  return <section className='card'><h2>Assessment groups</h2><p className='muted'>These groups decide what criteria appears in lessons. Swimmers do not need a separate initial assessment.</p><button className='btn org' onClick={addGroup}>+ Add assessment group</button>{groups(state).map((g, i) => <div className='card' key={g.id}><Field label='Group name' value={g.name} onChange={v => edit(i, 'name', v)} /><Field label='Group detail' value={g.detail || ''} onChange={v => edit(i, 'detail', v)} /><h3>Criteria sections included</h3><div>{state.framework.stages.map(stage => <label className='pill' key={stage}><input type='checkbox' checked={g.stages?.includes(stage)} onChange={e => { const next = e.target.checked ? [...(g.stages || []), stage] : (g.stages || []).filter(x => x !== stage); edit(i, 'stages', next); }} /> {stage}</label>)}</div><p className='muted'>{(g.stages || []).flatMap(stage => criteriaForStage(state, stage)).length} criteria in this group.</p></div>)}</section>;
+}
+function Framework({ state, update }) {
+  function setCriteria(stage, text) {
+    update({ framework: { ...state.framework, criteria: { ...state.framework.criteria, [stage]: text.split('\n').map(x => x.trim()).filter(Boolean) } } });
+  }
+  function addStage() {
+    const name = 'New Criteria Section ' + (state.framework.stages.length + 1);
+    update({ framework: { ...state.framework, stages: [...state.framework.stages, name], criteria: { ...state.framework.criteria, [name]: [] } } });
+  }
+  return <section className='card'><h2>Criteria framework</h2><p className='muted'>These are the criteria sections that groups can use.</p><Field label='Framework name' value={state.framework.name} onChange={v => update({ framework: { ...state.framework, name: v } })} /><button className='btn org' onClick={addStage}>+ Add criteria section</button>{state.framework.stages.map(stage => <div className='card' key={stage}><h3>{stage}</h3><textarea value={(state.framework.criteria?.[stage] || []).join('\n')} onChange={e => setCriteria(stage, e.target.value)} /></div>)}</section>;
+}
+function Certificates({ state, update }) {
+  function addCert() {
+    update({ certificates: [...state.certificates, { id: 'cert' + Date.now(), name: 'New Certificate Template', rule: 'Group criteria complete', font: 'Serif', size: 32, groupBy: 'Assessment group' }] });
+  }
+  return <section className='card'><h2>Certificate templates</h2><p className='muted'>Certificate generation is still demo-level, but it now points at group completion rather than initial placement.</p><button className='btn org' onClick={addCert}>+ Add certificate template</button>{state.certificates.map(c => <div className='card' key={c.id}><Field label='Name' value={c.name} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, name: v } : x) })} /><Select label='Rule' value={c.rule} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, rule: v } : x) })} options={['Group criteria complete', 'National Curriculum achieved', 'Selected award only'].map(x => ({ value: x, label: x }))} /><Select label='Group by' value={c.groupBy} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, groupBy: v } : x) })} options={['Assessment group', 'School / venue', 'Award', 'All in one PDF'].map(x => ({ value: x, label: x }))} /></div>)}</section>;
+}
+function Permissions({ state, update }) {
+  return <section className='card'><h2>Staff permissions</h2>{state.staff.map(staff => <div className='card' key={staff.id}><h3>{staff.name}</h3><p className='muted'>{staff.role}</p>{['sessions', 'groups', 'learners', 'assess', 'export', 'framework', 'certificates'].map(key => <label className='pill' key={key}><input type='checkbox' checked={!!staff[key]} onChange={e => update({ staff: state.staff.map(s => s.id === staff.id ? { ...s, [key]: e.target.checked } : s) })} /> {key}</label>)}</div>)}</section>;
+}
+
+function Field({ label, value, onChange, placeholder = '' }) {
+  return <div className='field'><label>{label}</label><input value={value || ''} placeholder={placeholder} onChange={e => onChange(e.target.value)} /></div>;
+}
+function Select({ label, value, onChange, options }) {
+  return <div className='field'><label>{label}</label><select value={value || ''} onChange={e => onChange(e.target.value)}>{options.map(option => typeof option === 'string' ? <option key={option} value={option}>{option}</option> : <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>;
+}
+function Distance({ label, value, onChange }) {
+  return <Select label={label} value={value || '0m'} onChange={onChange} options={distances.map(x => ({ value: x, label: x }))} />;
+}
 
 createRoot(document.getElementById('root')).render(<App />);
