@@ -7,197 +7,126 @@ export const nationalCurriculum = [
   'Water Safety Award completed'
 ];
 
+export const assessmentLevels = [
+  { label: 'Not assessed', value: 'no', pass: false },
+  { label: 'Almost there', value: 'float', pass: false },
+  { label: 'Passed', value: 'pass', pass: true }
+];
+
 export const scoringSystems = {
-  schoolSwimming: [
-    { label: 'Cannot do it', value: 'no', pass: false },
-    { label: 'Can do it with float', value: 'float', pass: false },
-    { label: 'Passed', value: 'pass', pass: true }
-  ],
-  privateLessons: [
-    { label: 'Needs practice', value: 'practice', pass: false },
-    { label: 'Getting there', value: 'getting', pass: false },
-    { label: 'Almost there', value: 'almost', pass: false },
-    { label: 'Passed', value: 'pass', pass: true }
-  ]
+  schoolSwimming: assessmentLevels,
+  privateLessons: assessmentLevels,
+  jbSwimming: assessmentLevels
 };
 
-export const schoolSwimmingCriteria = {
+export const jbSwimmingCriteria = {
   'Stage 1': [
-    'Enter the water safely',
-    'Move forwards, backwards and sideways - feet may be on the floor',
-    'Scoop the water and wash face and be comfortable with water showered overhead',
-    'Blow bubbles 3 times with mouth and nose submerged',
-    'Take part in a movement game',
-    'Exit the water safely'
-  ],
-  'Stage 2': [
-    'Float on the back and return to standing',
-    'Float on the front and return to standing',
-    'Push and glide on front and remain in horizontal position',
-    'Push and glide on back and remain in horizontal position',
-    'Travel 5m on the back',
-    'Travel 5m on the front',
-    'Perform a relaxed float on the back'
-  ],
-  'Stage 3': [
-    'Jump in from poolside and fully submerge',
-    'Fully submerge to pick up an object',
-    'Perform and hold a mushroom float for 5 seconds',
-    'Push and glide on front with face in, arms extended',
-    'Push and glide on the back with arms extended',
-    'Whilst floating, perform a rotation from front to back before returning to standing',
-    'Whilst floating, perform a rotation from back to front before returning to standing',
-    'Water safety - provide pool rules, describe water hazards and identify beach flags',
-    'Progression outcome - completed all criteria from Stage 1-3',
-    'Progression outcome - swim one width on front using arms and legs without putting feet down',
-    'Progression outcome - swim one width on back using arms and legs without putting feet down',
-    'Progression outcome - shown understanding and awareness of water safety'
-  ],
-  'Stage 4': [
-    'Jump in, submerge, surface and swim back to point of entry',
-    'Push and glide towards pool floor with arms extended',
-    'Perform a floating sequence - minimum of 3',
-    'Push and glide on front with arms extended, then log roll on to back',
-    'Push and glide on back with arms extended, then log roll on to front',
-    'Swim 5m on front, perform a tuck, rotate on to back and swim back to the side',
-    'Swim 10m on front',
-    'Swim 10m on back',
-    'Perform a shout and signal rescue',
-    'Safely climb out of the water without using the steps'
-  ],
-  'Stage 5': [
-    'Jump in, submerge, surface and swim back to point of entry - full reach depth',
-    'Perform a stationary scull on the back',
-    'Kick 10m backstroke',
-    'Kick 10m front crawl',
-    'Kick 10m butterfly or breaststroke - floats may only be used for breaststroke',
-    'Travel on back and log roll in one continuous movement on to front',
-    'Travel on front and log roll in one continuous movement on to back',
-    'Swim 10m with sound technique - choice of stroke is optional',
-    'Exit the water safely',
-    'Water safety - explain how you would get help in the water',
-    'Water safety - give an example of where it is safe to swim and why',
-    'Progression outcome - 15m distance achieved on front with recognised stroke technique',
-    'Progression outcome - 15m distance achieved on back with recognised stroke technique',
-    'Progression outcome - treading water for 30 seconds'
-  ],
-  'Stage 6': [
-    'Include three different shaped jumps into deep water including straddle entry',
-    'Perform a head-first scull for 5m',
-    'Complete 10m front crawl using sound technique',
-    'Complete 10m backstroke using sound technique',
-    'Complete 10m breaststroke using sound technique',
-    'Tread water for 30 seconds',
-    'Perform a handstand or tucked forward somersault in the water',
-    'Swim 25m - choice of stroke optional',
-    'Swim 10m wearing clothes - shorts and t-shirt minimum',
-    'Exit deep water without using steps',
-    'Progression outcome - 25m distance achieved on front with recognised stroke technique',
-    'Progression outcome - 25m distance achieved on back with recognised stroke technique',
-    'Progression outcome - 10m breaststroke',
-    'Progression outcome - 10m butterfly',
-    'Progression outcome - National Curriculum requirements achieved'
-  ],
-  'Self Rescue Award': [
-    'Enter the water using a fall-in entry',
-    'Float on the back or scull',
-    'Tread water for 20 seconds with one arm in the air and shout for help',
-    'Swim 15m on front, rotate, swim 15m on back to a floating object',
-    'Demonstrate the Heat Escape Lessening Position - HELP',
-    'Swim 10m retaining a floating object',
-    'Demonstrate the Huddle position',
-    'Swim using a long-arm front paddle survival stroke to the side',
-    'Climb out of the water without using the steps',
-    'Discuss when these skills might be used to self rescue in different water-based situations'
-  ]
-};
-
-export const eveningSwimCriteria = {
-  'Stage 1': [
-    'Enter and exit water safely with support if needed',
-    'Move forwards, backwards and sideways with support if needed',
+    'Enter the water safely from poolside',
+    'Exit the water safely without using the steps if able',
+    'Move forwards, backwards and sideways with confidence',
     'Scoop water and wash face confidently',
-    'Blow bubbles with face in the water',
-    'Float on front with support',
-    'Float on back with support',
-    'Travel 5m on front',
-    'Travel 5m on back',
-    'Return to standing safely'
+    'Blow bubbles with mouth and nose in the water',
+    'Float on front with support and return to standing',
+    'Float on back with support and return to standing',
+    'Travel 5m on front with support if needed',
+    'Travel 5m on back with support if needed',
+    'Show safe pool rules and listening skills'
   ],
   'Stage 2': [
-    'Jump in safely from poolside',
-    'Float on front without support',
-    'Float on back without support',
-    'Push and glide on front',
-    'Push and glide on back',
+    'Jump in safely from poolside and return to the wall',
+    'Float on front without support and return to standing',
+    'Float on back without support and return to standing',
+    'Push and glide on front with face in the water',
+    'Push and glide on back with arms extended',
+    'Travel 5m front crawl action',
+    'Travel 5m backstroke action',
     'Rotate from front to back and recover',
-    'Swim 10m on front',
-    'Swim 10m on back',
-    'Tread water for 15 seconds'
+    'Rotate from back to front and recover',
+    'Tread water or vertical scull for 10 seconds'
   ],
   'Stage 3': [
     'Submerge fully and regain standing position',
-    'Push and glide then swim on front',
-    'Push and glide then swim on back',
-    'Swim 15m on front',
-    'Swim 15m on back',
-    'Kick 10m breaststroke legs',
-    'Kick 10m butterfly legs',
-    'Tread water for 30 seconds',
-    'Perform a simple safe self-rescue action'
+    'Pick up an object from shallow water',
+    'Perform and hold a mushroom float for 5 seconds',
+    'Push and glide then swim 10m on front',
+    'Push and glide then swim 10m on back',
+    'Swim 10m front crawl with face in and breathing attempt',
+    'Swim 10m backstroke with relaxed body position',
+    'Kick 10m breaststroke legs with float if needed',
+    'Kick 10m butterfly legs with float if needed',
+    'Tread water for 20 seconds',
+    'Explain how to get help if in difficulty'
   ],
   'Stage 4': [
-    'Swim 20m on front',
-    'Swim 20m on back',
-    'Swim 10m breaststroke',
-    'Swim 10m butterfly or butterfly kick',
-    'Swim 25m front crawl',
-    'Swim 25m backstroke',
-    'Tread water for 45 seconds',
-    'Perform a feet-first surface dive',
-    'Perform a safe self-rescue sequence'
+    'Jump in, submerge, surface and swim back to the side',
+    'Push and glide towards the pool floor with control',
+    'Perform a floating sequence of at least 3 shapes',
+    'Swim 15m front crawl with recognisable technique',
+    'Swim 15m backstroke with recognisable technique',
+    'Swim 10m breaststroke with recognisable leg action',
+    'Swim 10m butterfly or butterfly kick with rhythm',
+    'Swim 5m on front, tuck, rotate onto back and return to the side',
+    'Perform a shout and signal rescue',
+    'Climb out safely without using steps'
   ],
   'Stage 5': [
-    'Swim 25m breaststroke',
-    'Swim 25m butterfly or butterfly kick',
-    'Swim 50m front crawl',
-    'Swim 50m backstroke',
-    'Show controlled breathing on front crawl',
-    'Show good body position on backstroke',
-    'Scull head-first for 5m',
-    'Tread water for 60 seconds',
-    'Demonstrate safe deep-water confidence'
+    'Jump into full reach depth, surface and return to point of entry',
+    'Perform a stationary scull on the back',
+    'Swim 25m front crawl with consistent breathing attempt',
+    'Swim 25m backstroke with consistent body position',
+    'Swim 15m breaststroke with timing attempt',
+    'Swim 15m butterfly or butterfly kick with rhythm',
+    'Kick 10m front crawl with good body position',
+    'Kick 10m backstroke with good body position',
+    'Travel on front and log roll onto back in one continuous movement',
+    'Travel on back and log roll onto front in one continuous movement',
+    'Tread water for 30 seconds',
+    'Explain where it is safe to swim and why'
   ],
   'Stage 6': [
-    'Swim 100m continuously',
-    'Swim 25m front crawl with breathing control',
-    'Swim 25m backstroke with good body position',
-    'Swim 25m breaststroke with rhythm',
-    'Swim 15m butterfly or butterfly kick',
-    'Perform a head-first surface dive',
-    'Perform a feet-first surface dive',
-    'Scull feet-first for 5m',
-    'Perform a safe self-rescue sequence'
+    'Perform three different shaped jumps into deep water',
+    'Perform a head-first scull for 5m',
+    'Swim 50m front crawl with controlled breathing',
+    'Swim 50m backstroke with good body position',
+    'Swim 25m breaststroke with rhythm and timing',
+    'Swim 15m butterfly with rhythm or strong butterfly kick',
+    'Swim 100m continuously using at least two strokes',
+    'Tread water for 60 seconds',
+    'Swim 10m wearing shorts and t-shirt',
+    'Exit deep water without using steps',
+    'Complete all National Curriculum swimming requirements'
   ],
   'Stage 7': [
-    'Swim 100m using a minimum of three different strokes',
+    'Swim 100m continuously using a minimum of three strokes',
     'Swim 50m front crawl with consistent technique',
     'Swim 50m backstroke with consistent technique',
     'Swim 50m breaststroke with consistent technique',
     'Swim 25m butterfly or butterfly kick with rhythm',
-    'Perform a racing start or streamlined push and glide',
+    'Perform a streamlined push and glide into stroke',
     'Perform a legal turn for at least two strokes',
     'Tread water for 90 seconds',
-    'Complete a longer safe self-rescue challenge'
+    'Perform a racing start or controlled deep-water entry where appropriate',
+    'Complete a longer water safety and self-rescue challenge'
+  ],
+  'Self Rescue Award': [
+    'Enter the water using a safe fall-in entry',
+    'Float on back or scull calmly to control breathing',
+    'Tread water for 20 seconds with one arm raised and shout for help',
+    'Swim 15m on front, rotate, then swim 15m on back to a floating object',
+    'Demonstrate the Heat Escape Lessening Position - HELP',
+    'Swim 10m while retaining a floating object',
+    'Demonstrate the Huddle position with a group',
+    'Swim using a long-arm front paddle survival stroke to the side',
+    'Climb out of the water without using steps',
+    'Explain when these self-rescue skills could be used in real situations'
   ]
 };
 
-export const stageCriteria = schoolSwimmingCriteria;
+export const schoolSwimmingCriteria = jbSwimmingCriteria;
+export const eveningSwimCriteria = jbSwimmingCriteria;
+export const stageCriteria = jbSwimmingCriteria;
 
-const combinedSwimCriteria = {
-  ...schoolSwimmingCriteria,
-  'Stage 7': eveningSwimCriteria['Stage 7']
-};
+const combinedSwimCriteria = jbSwimmingCriteria;
 
 export const allSwimStageNames = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Stage 6', 'Stage 7', 'Self Rescue Award'];
 
@@ -226,10 +155,10 @@ export const eveningOneToOneTemplate = {
 export const groupTemplates = [...schoolGroupTemplates, ...eveningGroupTemplates, eveningOneToOneTemplate];
 
 export const eveningSwimFramework = {
-  name: 'Evening Swim Lessons - Swim England Aligned',
+  name: 'JB Swimming Assessment Framework',
   area: 'Evening Swim Group',
   mode: 'Stages + National Curriculum',
-  scoringSystem: 'privateLessons',
+  scoringSystem: 'jbSwimming',
   stages: allSwimStageNames,
   criteria: combinedSwimCriteria,
   nationalCurriculum,
@@ -238,10 +167,10 @@ export const eveningSwimFramework = {
 };
 
 export const demoFramework = {
-  name: 'Stage Flow Swimming',
+  name: 'JB Swimming Assessment Framework',
   area: 'School Swimming',
   mode: 'Stages + National Curriculum',
-  scoringSystem: 'schoolSwimming',
+  scoringSystem: 'jbSwimming',
   stages: allSwimStageNames,
   criteria: combinedSwimCriteria,
   nationalCurriculum,
