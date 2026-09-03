@@ -26,6 +26,7 @@ export const jbSwimmingCriteria = {
     'Move forwards, backwards and sideways with confidence',
     'Scoop water and wash face confidently',
     'Blow bubbles with mouth and nose in the water',
+    'Exhale gently into the water with face in',
     'Float on front with support and return to standing',
     'Float on back with support and return to standing',
     'Travel 5m on front with support if needed',
@@ -38,6 +39,7 @@ export const jbSwimmingCriteria = {
     'Float on back without support and return to standing',
     'Push and glide on front with face in the water',
     'Push and glide on back with arms extended',
+    'Blow bubbles while travelling on the front',
     'Travel 5m front crawl action',
     'Travel 5m backstroke action',
     'Rotate from front to back and recover',
@@ -51,6 +53,7 @@ export const jbSwimmingCriteria = {
     'Push and glide then swim 10m on front',
     'Push and glide then swim 10m on back',
     'Swim 10m front crawl with face in and breathing attempt',
+    'Turn head to the side for a front crawl breathing attempt',
     'Swim 10m backstroke with relaxed body position',
     'Kick 10m breaststroke legs with float if needed',
     'Kick 10m butterfly legs with float if needed',
@@ -62,6 +65,7 @@ export const jbSwimmingCriteria = {
     'Push and glide towards the pool floor with control',
     'Perform a floating sequence of at least 3 shapes',
     'Swim 15m front crawl with recognisable technique',
+    'Swim 15m front crawl with side breathing attempt',
     'Swim 15m backstroke with recognisable technique',
     'Swim 10m breaststroke with recognisable leg action',
     'Swim 10m butterfly or butterfly kick with rhythm',
@@ -73,6 +77,7 @@ export const jbSwimmingCriteria = {
     'Jump into full reach depth, surface and return to point of entry',
     'Perform a stationary scull on the back',
     'Swim 25m front crawl with consistent breathing attempt',
+    'Breathe to the side without lifting head on front crawl',
     'Swim 25m backstroke with consistent body position',
     'Swim 15m breaststroke with timing attempt',
     'Swim 15m butterfly or butterfly kick with rhythm',
@@ -87,6 +92,7 @@ export const jbSwimmingCriteria = {
     'Perform three different shaped jumps into deep water',
     'Perform a head-first scull for 5m',
     'Swim 50m front crawl with controlled breathing',
+    'Maintain controlled side breathing over 50m front crawl',
     'Swim 50m backstroke with good body position',
     'Swim 25m breaststroke with rhythm and timing',
     'Swim 15m butterfly with rhythm or strong butterfly kick',
@@ -99,6 +105,7 @@ export const jbSwimmingCriteria = {
   'Stage 7': [
     'Swim 100m continuously using a minimum of three strokes',
     'Swim 50m front crawl with consistent technique',
+    'Use bilateral or chosen-side breathing over 50m front crawl',
     'Swim 50m backstroke with consistent technique',
     'Swim 50m breaststroke with consistent technique',
     'Swim 25m butterfly or butterfly kick with rhythm',
@@ -186,7 +193,7 @@ export const demoLessons = [
 ];
 
 export const demoLearners = [
-  { id: 'p1', lesson: 'l1', name: 'Alex Smith', stage: 'Stage 1', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} },
-  { id: 'p2', lesson: 'l1', name: 'Mia Jones', stage: 'Stage 2', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} },
-  { id: 'p3', lesson: 'l4', name: '1:1 Example Swimmer', stage: 'Stage 3', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {} }
+  { id: 'p1', lesson: 'l1', name: 'Alex Smith', stage: 'Stage 1', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
+  { id: 'p2', lesson: 'l1', name: 'Mia Jones', stage: 'Stage 2', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
+  { id: 'p3', lesson: 'l4', name: '1:1 Example Swimmer', stage: 'Stage 3', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} }
 ];
