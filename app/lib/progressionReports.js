@@ -19,7 +19,7 @@ function saveJson(key, value) {
   }
 }
 
-function state() {
+function appState() {
   return loadJson(APP_KEY, {});
 }
 
@@ -39,14 +39,32 @@ function csvValue(value) {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
+function normaliseProgramme(programme) {
+  const text = String(programme || '').trim();
+  if (text === 'Evening Swim Lessons') return 'Evening Swim Group';
+  if (['Evening 1:1', 'Evening Swim 121', 'Evening Swim One-to-one'].includes(text)) return 'Evening Swim 1:1';
+  return text || 'School Swimming';
+}
+
 function lessonProgramme(lesson = {}) {
-  if (lesson.programme) return lesson.programme;
-  const text = `${lesson.school || ''} ${lesson.name || ''} ${lesson.year || ''}`.toLowerCase();
-  if (text.includes('evening')) return 'Evening Swim Lessons';
+  if (lesson.programme) return normaliseProgramme(lesson.programme);
+  const text = `${lesson.school || ''} ${lesson.name || ''} ${lesson.year || ''} ${lesson.className || ''}`.toLowerCase();
+  if (text.includes('1:1') || text.includes('121') || text.includes('one to one') || text.includes('one-to-one')) return 'Evening Swim 1:1';
+  if (text.includes('evening')) return 'Evening Swim Group';
   if (text.includes('private')) return 'Private Lessons';
   if (text.includes('gym')) return 'Gymnastics';
   if (text.includes('pe')) return 'School PE';
   return 'School Swimming';
+}
+
+function groupTemplate(app, lesson = {}) {
+  return (app?.framework?.groupTemplates || []).find(group => group.id === lesson.groupTemplateId) || null;
+}
+
+function groupLabel(app, lesson = {}) {
+  const group = groupTemplate(app, lesson);
+  if (!group) return 'No criteria group';
+  return `${group.name}${group.detail ? ' · ' + group.detail : ''}`;
 }
 
 function stageNumber(stage) {
@@ -69,6 +87,13 @@ function stageOrder(stages = []) {
 
 function stageCriteria(app, stage) {
   return app?.framework?.criteria?.[stage] || [];
+}
+
+function lessonCriteria(app, lesson = {}) {
+  if (!lesson || lesson.mode === 'National Curriculum only') return [];
+  const group = groupTemplate(app, lesson);
+  const stages = group?.stages?.length ? group.stages : app?.framework?.stages || [];
+  return [...new Set(stageOrder(stages).flatMap(stage => stageCriteria(app, stage)))];
 }
 
 function completedCount(learner, criteria) {
@@ -103,14 +128,15 @@ function ncCount(learner) {
 }
 
 function learnerProgress(app, learner, lesson) {
-  const stage = learner.stage || app?.framework?.stages?.[0] || 'Stage 1';
-  const criteria = stageCriteria(app, stage);
+  const criteria = lessonCriteria(app, lesson);
   const complete = completedCount(learner, criteria);
   const total = criteria.length;
   const remaining = Math.max(0, total - complete);
-  let status = 'Working on stage';
-  if (total && remaining === 0) status = nextStage(app, stage) ? 'Ready to move up' : 'Top stage complete';
-  else if (total && remaining <= 2) status = 'Nearly ready';
+  const stage = learner.stage || groupTemplate(app, lesson)?.stages?.[0] || app?.framework?.stages?.[0] || 'Stage 1';
+  let status = 'Working on criteria group';
+  if (!total && lesson?.mode === 'National Curriculum only') status = 'NC only';
+  else if (total && remaining === 0) status = 'Criteria group complete';
+  else if (total && remaining <= 2) status = 'Nearly complete';
   else if (total && complete === 0) status = 'Needs support';
   return {
     learner: learner.name || 'Unnamed learner',
@@ -122,8 +148,9 @@ function learnerProgress(app, learner, lesson) {
     year: lesson?.year || '',
     attendance: learner.att || 'Present',
     stage,
+    criteriaGroup: groupLabel(app, lesson),
     highest: highestEarnedStage(app, learner),
-    next: nextStage(app, stage),
+    next: nextStage(app, highestEarnedStage(app, learner) || stage),
     complete,
     total,
     remaining,
@@ -135,13 +162,13 @@ function learnerProgress(app, learner, lesson) {
   };
 }
 
-function allProgressRows(app = state()) {
+function allProgressRows(app = appState()) {
   const lessons = Array.isArray(app.lessons) ? app.lessons : [];
   const learners = Array.isArray(app.learners) ? app.learners : [];
   return learners.map(learner => learnerProgress(app, learner, lessons.find(lesson => lesson.id === learner.lesson) || {}));
 }
 
-function filteredRows(app = state()) {
+function filteredRows(app = appState()) {
   const filters = filterState();
   return allProgressRows(app).filter(row => {
     const schoolOk = filters.school === 'All' || row.school === filters.school;
@@ -172,8 +199,8 @@ function summaryHtml(rows) {
   return `
     <div class="progression-summary">
       <div class="progression-stat">${rows.length}<small>Filtered learners</small></div>
-      <div class="progression-stat">${counts['Ready to move up'] || 0}<small>Ready to move up</small></div>
-      <div class="progression-stat">${counts['Nearly ready'] || 0}<small>Nearly ready</small></div>
+      <div class="progression-stat">${counts['Criteria group complete'] || 0}<small>Criteria complete</small></div>
+      <div class="progression-stat">${counts['Nearly complete'] || 0}<small>Nearly complete</small></div>
       <div class="progression-stat">${ncDone}<small>NC complete</small></div>
       <div class="progression-stat">${totalRemaining}<small>Total criteria left</small></div>
     </div>
@@ -181,7 +208,7 @@ function summaryHtml(rows) {
 }
 
 function rowHtml(row) {
-  const tone = row.status === 'Ready to move up' ? 'ready' : row.status === 'Nearly ready' ? 'nearly' : row.status === 'Needs support' ? 'support' : '';
+  const tone = row.status === 'Criteria group complete' ? 'ready' : row.status === 'Nearly complete' ? 'nearly' : row.status === 'Needs support' ? 'support' : '';
   return `
     <div class="progression-row ${tone}">
       <div>
@@ -189,7 +216,7 @@ function rowHtml(row) {
         <small>${escapeHtml(row.school)} · ${escapeHtml(row.programme)} · ${escapeHtml(row.year)}${row.className ? ' · ' + escapeHtml(row.className) : ''}</small>
       </div>
       <div>
-        <span class="progression-badge">${escapeHtml(row.stage)}</span>
+        <span class="progression-badge">${escapeHtml(row.criteriaGroup)}</span>
         <span class="progression-badge">${row.complete}/${row.total || 0} passed</span>
         <span class="progression-badge">${escapeHtml(row.status)}</span>
         <span class="progression-badge">NC ${escapeHtml(row.nc)}</span>
@@ -200,8 +227,8 @@ function rowHtml(row) {
 }
 
 function csvRows(rows) {
-  const headers = ['Learner','School/Venue','Programme','Lesson','Year/Class','Class/SEN','Attendance','Current Stage','Highest Earned Certificate','Next Stage','Passed Criteria','Total Criteria','Criteria Remaining','Progression Status','Front Distance','Back Distance','National Curriculum','NC Complete'];
-  const body = rows.map(row => [row.learner,row.school,row.programme,row.lesson,row.year,row.className,row.attendance,row.stage,row.highest,row.next,row.complete,row.total,row.remaining,row.status,row.front,row.back,row.nc,row.ncComplete ? 'Yes' : 'No'].map(csvValue).join(','));
+  const headers = ['Learner','School/Venue','Programme','Lesson','Year/Class','Class/SEN','Attendance','Criteria Group','Current Stage','Highest Earned Certificate','Next Stage','Passed Criteria','Total Criteria','Criteria Remaining','Progression Status','Front Distance','Back Distance','National Curriculum','NC Complete'];
+  const body = rows.map(row => [row.learner,row.school,row.programme,row.lesson,row.year,row.className,row.attendance,row.criteriaGroup,row.stage,row.highest,row.next,row.complete,row.total,row.remaining,row.status,row.front,row.back,row.nc,row.ncComplete ? 'Yes' : 'No'].map(csvValue).join(','));
   return [headers.map(csvValue).join(','), ...body].join('\n');
 }
 
@@ -226,7 +253,7 @@ function downloadCsv() {
 }
 
 function markQueued() {
-  const app = state();
+  const app = appState();
   const filters = filterState();
   const audit = Array.isArray(app.audit) ? app.audit : [];
   app.audit = [`Progression report queued for ${filters.school} / ${filters.programme}`, ...audit];
@@ -259,7 +286,7 @@ function addStyles() {
 }
 
 function buildPanel() {
-  const app = state();
+  const app = appState();
   const allRows = allProgressRows(app);
   const rows = filteredRows(app);
   const filters = filterState();
@@ -268,7 +295,7 @@ function buildPanel() {
   return `
     <section class="card progression-panel" data-progression-reports>
       <h2>Progressions + filtered reports</h2>
-      <p class="muted">Filter by school/venue and programme before exporting. This helps stop the wrong learner data being sent to the wrong customer.</p>
+      <p class="muted">Filter by school/venue and programme before exporting. Progress is now calculated from the selected criteria group, not an old initial-stage placement.</p>
       <div class="progression-filter-grid">
         <div class="field"><label>School / Venue</label><select data-progression-filter="school">${options(schools, filters.school)}</select></div>
         <div class="field"><label>Programme</label><select data-progression-filter="programme">${options(programmes, filters.programme)}</select></div>
@@ -283,11 +310,19 @@ function buildPanel() {
   `;
 }
 
+function reportsMain() {
+  const hero = Array.from(document.querySelectorAll('.hero h1')).find(h => {
+    const text = h.textContent.trim();
+    return text === 'Progress Overview' || text === 'End-of-Term Pack' || text === 'Reports';
+  });
+  if (!hero) return null;
+  return document.querySelector('main');
+}
+
 function mountProgressionReports() {
   addStyles();
-  const reportsHero = Array.from(document.querySelectorAll('.hero h1')).find(h => h.textContent.trim() === 'End-of-Term Pack');
-  const main = document.querySelector('main');
-  if (!reportsHero || !main) return;
+  const main = reportsMain();
+  if (!main) return;
   const old = main.querySelector('[data-progression-reports]');
   if (old) old.remove();
   main.insertAdjacentHTML('beforeend', buildPanel());
