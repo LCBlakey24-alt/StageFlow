@@ -69,10 +69,16 @@ function groupStageForLearner(learner, lessons, framework) {
 
 function defaultGroupForProgramme(programme, framework, currentGroupId) {
   const programmeName = normaliseProgrammeName(programme);
-  if (programmeName === 'Evening Swim 1:1') return framework.groupTemplates?.find(group => group.id === 'eg121')?.id || currentGroupId || framework.groupTemplates?.[0]?.id || '';
-  if (programmeName === 'Evening Swim Group') return framework.groupTemplates?.find(group => group.programme === 'Evening Swim Group')?.id || currentGroupId || framework.groupTemplates?.[0]?.id || '';
-  if (programmeName === 'School Swimming') return framework.groupTemplates?.find(group => group.programme === 'School Swimming' || group.id === 'g1')?.id || currentGroupId || framework.groupTemplates?.[0]?.id || '';
-  return currentGroupId || framework.groupTemplates?.[0]?.id || '';
+  const templates = framework.groupTemplates || [];
+  const matchingGroups = templates.filter(group => group.programme === programmeName);
+  const currentMatchesProgramme = currentGroupId && matchingGroups.some(group => group.id === currentGroupId);
+
+  if (currentMatchesProgramme) return currentGroupId;
+  if (programmeName === 'Evening Swim 1:1' || programmeName === 'Private Lessons') {
+    return templates.find(group => group.id === 'eg121')?.id || currentGroupId || templates[0]?.id || '';
+  }
+  if (matchingGroups.length) return matchingGroups[0].id;
+  return currentGroupId || templates[0]?.id || '';
 }
 
 export function normaliseState(saved, fallback) {
@@ -130,7 +136,7 @@ export function normaliseState(saved, fallback) {
     };
 
     // Simplified Stage Flow model:
-    // group sessions follow their selected criteria group. 1:1 sessions keep a
+    // class/group sessions follow their selected criteria group. 1:1 sessions keep a
     // more flexible learner stage because all stages are visible for that swimmer.
     return {
       ...safeLearner,
