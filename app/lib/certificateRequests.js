@@ -1,7 +1,7 @@
 const REQUEST_KEY = 'stageflow-certificate-requests';
 const APP_KEY = 'stageflow-state';
 const DEFAULT_CHARGE = 3.5;
-const BILLABLE_PROGRAMMES = ['Evening Swim Lessons', 'Private Lessons'];
+const BILLABLE_PROGRAMMES = ['Evening Swim Group', 'Evening Swim 1:1', 'Evening Swim Lessons', 'Private Lessons'];
 const NC_ITEMS = ['25m front crawl', '25m backstroke', '10m butterfly or breaststroke', 'Water Safety Award completed'];
 
 function loadJson(key, fallback) {
@@ -47,10 +47,19 @@ function stageNumber(stage) {
   return match ? Number(match[1]) : 0;
 }
 
+function normaliseProgramme(programme) {
+  const value = String(programme || '').trim();
+  if (!value) return 'School Swimming';
+  if (value === 'Evening Swim Lessons') return 'Evening Swim Group';
+  if (['Evening Swim 121', 'Evening 1:1', 'Evening Swim One-to-one'].includes(value)) return 'Evening Swim 1:1';
+  return value;
+}
+
 function lessonProgramme(lesson = {}) {
-  if (lesson.programme) return lesson.programme;
-  const text = `${lesson.school || ''} ${lesson.name || ''} ${lesson.year || ''}`.toLowerCase();
-  if (text.includes('evening')) return 'Evening Swim Lessons';
+  if (lesson.programme) return normaliseProgramme(lesson.programme);
+  const text = `${lesson.school || ''} ${lesson.name || ''} ${lesson.year || ''} ${lesson.className || ''}`.toLowerCase();
+  if (text.includes('1:1') || text.includes('121') || text.includes('one to one') || text.includes('one-to-one')) return 'Evening Swim 1:1';
+  if (text.includes('evening') || text.includes('private swim')) return 'Evening Swim Group';
   if (text.includes('private')) return 'Private Lessons';
   if (text.includes('gym')) return 'Gymnastics';
   if (text.includes('pe')) return 'School PE';
@@ -58,7 +67,11 @@ function lessonProgramme(lesson = {}) {
 }
 
 function isBillableProgramme(programme) {
-  return BILLABLE_PROGRAMMES.includes(programme);
+  return BILLABLE_PROGRAMMES.includes(normaliseProgramme(programme));
+}
+
+function displayProgramme(programme) {
+  return normaliseProgramme(programme);
 }
 
 function stageComplete(state, learner, stage) {
@@ -133,7 +146,7 @@ function addRequest(offer, accepted) {
     lessonId: offer.lessonId,
     lessonName: offer.lessonName,
     payer: offer.payer,
-    programme: offer.programme,
+    programme: displayProgramme(offer.programme),
     award: offer.award,
     kind: offer.kind,
     charge,
@@ -180,7 +193,7 @@ function renderOfferRows(offers) {
   return offers.map((offer, index) => `
     <div class="cert-request-row">
       <strong>${escapeHtml(offer.learnerName)} — ${escapeHtml(offer.award)}</strong>
-      <small>${escapeHtml(offer.programme)} · ${escapeHtml(offer.payer)} · ${escapeHtml(offer.kind)} · ${money(DEFAULT_CHARGE)} added to next monthly charge if accepted</small>
+      <small>${escapeHtml(displayProgramme(offer.programme))} · ${escapeHtml(offer.payer)} · ${escapeHtml(offer.kind)} · ${money(DEFAULT_CHARGE)} added to next monthly charge if accepted</small>
       <div class="cert-request-actions">
         <button class="accept" data-cert-request-action="accept" data-offer-index="${index}">Parent accepts certificate</button>
         <button class="light" data-cert-request-action="decline" data-offer-index="${index}">No certificate needed</button>
@@ -195,7 +208,7 @@ function renderQueueRows(list) {
   return queue.map(item => `
     <div class="cert-request-row">
       <strong>${escapeHtml(item.learnerName)} — ${escapeHtml(item.award)}</strong>
-      <small>${escapeHtml(item.status)} · ${escapeHtml(item.programme)} · ${money(item.charge)} · ${item.printed ? 'Printed/ready' : 'Needs making'}</small>
+      <small>${escapeHtml(item.status)} · ${escapeHtml(displayProgramme(item.programme))} · ${money(item.charge)} · ${item.printed ? 'Printed/ready' : 'Needs making'}</small>
       <div class="cert-request-actions">
         <button data-cert-request-action="printed" data-id="${item.id}">Tick printed/ready</button>
         <button class="accept" data-cert-request-action="delivered" data-id="${item.id}">Tick delivered</button>
@@ -222,7 +235,7 @@ function renderIncludedRows(items) {
   return items.slice(0, 8).map(item => `
     <div class="cert-request-row">
       <strong>${escapeHtml(item.learnerName)} — ${escapeHtml(item.award)}</strong>
-      <small>${escapeHtml(item.programme)} · ${escapeHtml(item.payer)} · included in school/export pack</small>
+      <small>${escapeHtml(displayProgramme(item.programme))} · ${escapeHtml(item.payer)} · included in school/export pack</small>
     </div>
   `).join('');
 }
@@ -237,14 +250,14 @@ function buildPanel() {
   return `
     <section class="card cert-request-panel" data-cert-requests>
       <h2>Certificate requests + charges</h2>
-      <p class="muted">For evening/private lessons: parent accepts the certificate, the charge is added to their next monthly payment, then the coach gets a make/deliver task.</p>
+      <p class="muted">For evening group, evening 1:1 and private lessons: parent accepts the certificate, the charge is added to their next monthly payment, then the coach gets a make/deliver task.</p>
       <div class="cert-request-summary">
         <div class="cert-request-stat">${offers.length}<small>Parent offers waiting</small></div>
         <div class="cert-request-stat">${queueCount}<small>Coach tasks to make</small></div>
         <div class="cert-request-stat">${money(chargeTotal)}<small>Monthly extras</small></div>
         <div class="cert-request-stat">${deliveredCount}<small>Delivered</small></div>
       </div>
-      <span class="cert-request-badge">Billable: evening + private lessons</span>
+      <span class="cert-request-badge">Billable: evening group, 1:1 + private lessons</span>
       <span class="cert-request-badge">School swimming: included in pack</span>
       <section class="card"><h3>Parent/customer certificate offers</h3>${renderOfferRows(offers)}</section>
       <section class="card"><h3>Coach notification queue</h3>${renderQueueRows(list)}</section>
