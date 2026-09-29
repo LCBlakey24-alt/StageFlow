@@ -204,6 +204,20 @@ function createLearnersFromText(text, lessonId, groupStage) {
 
 function App() {
   const [state, setState] = useState(() => loadAppState(starter));
+  const [hydroStatus, setHydroStatus] = useState('idle');
+
+  async function enableHydrotherapy() {
+    if (hydroStatus === 'loading' || hydroStatus === 'enabled') return;
+    setHydroStatus('loading');
+    try {
+      await import('./lib/senHydrotherapyModule.js');
+      setHydroStatus('enabled');
+    } catch (error) {
+      console.error('Stage Flow SEN Hydrotherapy demo failed to load', error);
+      setHydroStatus('error');
+    }
+  }
+
   function update(next) {
     const newState = typeof next === 'function' ? next(state) : { ...state, ...next };
     setState(newState);
@@ -216,7 +230,7 @@ function App() {
     <div className='wrap'>
       <nav className='rail'>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list' })}>{screen[0].toUpperCase()}</button>)}</nav>
       <main>
-        {state.screen === 'home' && <Home state={state} update={update} />}
+        {state.screen === 'home' && <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />}
         {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
         {state.screen === 'timetable' && state.step !== 'list' && (lesson ? <Lesson state={state} update={update} lesson={lesson} /> : <MissingLesson update={update} />)}
         {state.screen === 'health' && <HealthCheck state={state} update={update} />}
@@ -231,7 +245,7 @@ function MissingLesson({ update }) {
   return <section className='card'><h2>Class/session not found</h2><p className='muted'>That class may have been deleted or old saved data pointed to a missing session.</p><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Back to timetable</button></section>;
 }
 
-function Home({ state, update }) {
+function Home({ state, update, hydroStatus, enableHydrotherapy }) {
   const day = state.currentDay || 'Tuesday';
   const next = state.lessons.find(l => lessonDay(l) === day) || state.lessons[0];
   const ncDone = state.learners.filter(p => nationalCurriculum.every(item => p.nc?.[item])).length;
@@ -246,6 +260,16 @@ function Home({ state, update }) {
       <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span><small>Classes, sessions and registers</small></button>
       <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>Criteria Groups</span><small>{groupsCount} groups set up</small></button>
       <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress Overview</span><small>Who is nearly complete</small></button>
+    </section>
+    <section className='card'>
+      <h2>SEN Hydrotherapy <span className='pill'>Optional demo</span></h2>
+      <p className='muted'>The hydrotherapy criteria, diary and child timeline are kept out of startup while the app recovery stays stable. Load them only when you want to test that workflow.</p>
+      <div style={{ marginTop: 10 }}>
+        <button className='btn org' disabled={hydroStatus === 'loading' || hydroStatus === 'enabled'} onClick={enableHydrotherapy}>
+          {hydroStatus === 'loading' ? 'Loading hydrotherapy…' : hydroStatus === 'enabled' ? 'Hydrotherapy demo loaded' : hydroStatus === 'error' ? 'Try hydrotherapy demo again' : 'Load hydrotherapy demo'}
+        </button>
+      </div>
+      <p className='muted' style={{ marginTop: 8 }}>Demo/local storage only — do not enter real pupil, medical or safeguarding details yet.</p>
     </section>
     {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupLabel(state, next)}</span><span className='pill'>{groupCriteria(state, next).length} criteria</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open register</button></section> : <section className='card'><h2>No classes yet</h2><p className='muted'>Go to Timetable and create your first class/session.</p></section>}
     <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Classes/sessions</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
