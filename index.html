@@ -4,12 +4,53 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
-    <meta name="stageflow-build-note" content="restore-app-shell-2026-09-29" />
+    <meta name="stageflow-build-note" content="stable-startup-cache-reset-2026-09-29" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/stage-flow-icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search || '');
+        var forceReset = params.has('reset') || params.has('fresh');
+        var resetKey = 'stageflow-cache-reset-complete';
+
+        function clearBrowserCaches() {
+          var jobs = [];
+          if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+            jobs.push(
+              navigator.serviceWorker.getRegistrations()
+                .then(function (registrations) {
+                  return Promise.all(registrations.map(function (registration) {
+                    return registration.unregister();
+                  }));
+                })
+                .catch(function () {})
+            );
+          }
+          if (window.caches && window.caches.keys) {
+            jobs.push(
+              window.caches.keys()
+                .then(function (keys) {
+                  return Promise.all(keys.map(function (key) {
+                    return window.caches.delete(key);
+                  }));
+                })
+                .catch(function () {})
+            );
+          }
+          return Promise.all(jobs);
+        }
+
+        clearBrowserCaches().then(function () {
+          if (forceReset && !window.sessionStorage.getItem(resetKey)) {
+            window.sessionStorage.setItem(resetKey, '1');
+            window.location.replace('/?fresh=' + Date.now());
+          }
+        });
+      }());
+    </script>
     <style>
       .brand,
       .hero h1,
@@ -60,7 +101,6 @@
     <script type="module" src="/app/lib/weekCalendarPlanner.js"></script>
     <script type="module" src="/app/lib/weekCalendarMove.js"></script>
     <script type="module" src="/app/lib/weekCalendarCopy.js"></script>
-    <script type="module" src="/app/lib/weekCalendarConflicts.js"></script>
     <script type="module" src="/app/lib/certificateRequests.js"></script>
     <script type="module" src="/app/lib/progressionReports.js"></script>
     <script type="module" src="/app/lib/schoolReportExports.js"></script>
