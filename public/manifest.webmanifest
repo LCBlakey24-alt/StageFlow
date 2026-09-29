@@ -1,0 +1,20 @@
+{
+  "name": "Stage Flow",
+  "short_name": "Stage Flow",
+  "description": "Stage Flow assessment, SEN hydrotherapy diary and timeline demo workflow.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fbff",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/stage-flow-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"]
+}
