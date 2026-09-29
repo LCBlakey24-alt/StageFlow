@@ -50,6 +50,8 @@ main{min-width:0}
 .quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
 .stage-hero{padding:22px 26px}
 .stage-hero h1{margin:0}
+.compact-hero{padding:20px 24px}
+.compact-hero h1{margin:0}
 .action-card{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:20px;padding:15px 16px;text-align:left;box-shadow:var(--small-shadow);display:grid;align-items:center;gap:5px;min-height:76px;position:relative;overflow:hidden}
 .action-card:after{content:'';position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--bar);opacity:.85}
 .action-card span{font-size:18px;font-weight:1000;letter-spacing:-.035em}
