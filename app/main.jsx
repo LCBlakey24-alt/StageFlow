@@ -249,31 +249,23 @@ function Home({ state, update, hydroStatus, enableHydrotherapy }) {
   const day = state.currentDay || 'Tuesday';
   const next = state.lessons.find(l => lessonDay(l) === day) || state.lessons[0];
   const ncDone = state.learners.filter(p => nationalCurriculum.every(item => p.nc?.[item])).length;
-  const health = getHealthItems(state);
-  const done = health.filter(item => item.done).length;
-  const percent = Math.round((done / health.length) * 100);
-  const groupsCount = groups(state).length;
   return <>
-    <section className='hero stage-hero'><p>Teach. Track. Progress.</p><h1>Group-based assessment, without the paperwork fog.</h1><p>Create a class/session, choose the criteria group, then assess every learner against the right skills.</p></section>
+    <section className='hero stage-hero'><h1>Teach. Track. Progress.</h1></section>
     <section className='quick-actions'>
-      <button className='action-card primary-action' onClick={() => next && update({ screen: 'timetable', active: next.id, step: 'assess', assessmentMode: 'swimmer', selected: state.learners.find(p => p.lesson === next.id && p.att !== 'Absent')?.id || '' })}><span>Start Assessment</span><small>Assess by name or by skill</small></button>
-      <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span><small>Classes, sessions and registers</small></button>
-      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>Criteria Groups</span><small>{groupsCount} groups set up</small></button>
-      <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress Overview</span><small>Who is nearly complete</small></button>
+      <button className='action-card primary-action' onClick={() => next && update({ screen: 'timetable', active: next.id, step: 'assess', assessmentMode: 'swimmer', selected: state.learners.find(p => p.lesson === next.id && p.att !== 'Absent')?.id || '' })}><span>Start Assessment</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>Criteria Groups</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress</span></button>
     </section>
-    <section className='card'>
-      <h2>SEN Hydrotherapy <span className='pill'>Optional demo</span></h2>
-      <p className='muted'>The hydrotherapy criteria, diary and child timeline are kept out of startup while the app recovery stays stable. Load them only when you want to test that workflow.</p>
-      <div style={{ marginTop: 10 }}>
-        <button className='btn org' disabled={hydroStatus === 'loading' || hydroStatus === 'enabled'} onClick={enableHydrotherapy}>
-          {hydroStatus === 'loading' ? 'Loading hydrotherapy…' : hydroStatus === 'enabled' ? 'Hydrotherapy demo loaded' : hydroStatus === 'error' ? 'Try hydrotherapy demo again' : 'Load hydrotherapy demo'}
-        </button>
-      </div>
-      <p className='muted' style={{ marginTop: 8 }}>Demo/local storage only — do not enter real pupil, medical or safeguarding details yet.</p>
+    {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {next.school}</p></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open register</button></section> : <section className='card'><h2>No classes yet</h2><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Open timetable</button></section>}
+    <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Sessions</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
+    <section className='card hydro-home-card'>
+      <h2>SEN Hydrotherapy <span className='pill'>Demo</span></h2>
+      <button className='btn org' disabled={hydroStatus === 'loading' || hydroStatus === 'enabled'} onClick={enableHydrotherapy}>
+        {hydroStatus === 'loading' ? 'Loading…' : hydroStatus === 'enabled' ? 'Hydrotherapy loaded' : hydroStatus === 'error' ? 'Try again' : 'Load hydrotherapy'}
+      </button>
+      <p className='muted' style={{ marginTop: 8 }}>Demo only — don’t use real pupil data yet.</p>
     </section>
-    {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {lessonProgramme(next)} · {next.school} · {next.year}</p><span className='pill'>{groupLabel(state, next)}</span><span className='pill'>{groupCriteria(state, next).length} criteria</span><span className='pill'>Register → Assess → Save</span></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open register</button></section> : <section className='card'><h2>No classes yet</h2><p className='muted'>Go to Timetable and create your first class/session.</p></section>}
-    <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Classes/sessions</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
-    <section className='card'><h2>Build health</h2><p className='muted'>{percent}% checked inside the app</p><button className='btn org' onClick={() => update({ screen: 'health' })}>Open health check</button></section>
   </>;
 }
 
