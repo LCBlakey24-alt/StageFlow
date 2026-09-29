@@ -1,40 +1,27 @@
-const CACHE_NAME = 'stage-flow-app-shell-v1';
-const APP_SHELL = ['/', '/manifest.webmanifest', '/stage-flow-icon.svg'];
-
+// Temporary safety reset while Stage Flow's app-shell caching is rebuilt.
+// This clears existing caches and unregisters the service worker so the live app
+// always loads the newest Vercel build instead of a stale cached shell.
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL))
-      .catch(() => undefined)
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+    caches.keys()
+      .then(keys => Promise.all(keys.map(key => caches.delete(key))))
+      .then(() => self.registration.unregister())
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then(clients => {
+        clients.forEach(client => {
+          if ('navigate' in client) {
+            client.navigate(client.url);
+          }
+        });
+      })
+      .catch(() => undefined)
   );
-  self.clients.claim();
 });
 
-self.addEventListener('fetch', event => {
-  const request = event.request;
-  if (request.method !== 'GET') return;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-
-  const isAppShell = url.pathname === '/' || url.pathname === '/manifest.webmanifest' || url.pathname === '/stage-flow-icon.svg';
-  const isBuiltAsset = url.pathname.startsWith('/assets/');
-  if (!isAppShell && !isBuiltAsset) return;
-
-  event.respondWith(
-    fetch(request)
-      .then(response => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).catch(() => undefined);
-        return response;
-      })
-      .catch(() => caches.match(request))
-  );
+self.addEventListener('fetch', () => {
+  // No fetch interception while the service worker is disabled.
 });
