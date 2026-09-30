@@ -516,9 +516,9 @@ function Lesson({ state, update, lesson }) {
   const coachOnly = !!staff && staff.role !== 'Admin';
   const requestedStep = state.step || 'register';
   const currentStep = coachOnly && requestedStep === 'edit' ? 'register' : requestedStep;
-  const steps = coachOnly ? ['register', 'assess'] : ['edit', 'register', 'assess', 'save'];
+  const steps = ['edit', 'register', 'assess', 'save'];
   return <>
-    <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupCriteria(state, lesson).length} criteria</p><div className='steps'>{steps.map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess' : step}</span>)}</div></section>
+    {coachOnly ? <section className='hero compact-hero lesson-coach-hero'><div><p>{lesson.time} · {lesson.school}</p><h1>{lesson.name}</h1></div><span>{currentStep === 'register' ? 'Register' : 'Assessment'}</span></section> : <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupCriteria(state, lesson).length} criteria</p><div className='steps'>{steps.map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess' : step}</span>)}</div></section>}
     {currentStep === 'edit' && !coachOnly && <LessonSetup state={state} update={update} lesson={lesson} />}
     {currentStep === 'register' && <Register state={state} update={update} lesson={lesson} />}
     {currentStep === 'assess' && <Assess state={state} update={update} lesson={lesson} />}
@@ -602,6 +602,7 @@ function Assess({ state, update, lesson }) {
   const selected = kids.find(p => p.id === state.selected) || kids[0];
   const selectedIndex = Math.max(0, kids.findIndex(p => p.id === selected?.id));
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
+  const selectedSkillIndex = Math.max(0, criteria.indexOf(selectedSkill));
   const mode = state.assessmentMode || 'swimmer';
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
@@ -625,13 +626,19 @@ function Assess({ state, update, lesson }) {
     const nextIndex = Math.max(0, Math.min(kids.length - 1, selectedIndex + offset));
     update({ selected: kids[nextIndex].id });
   }
+
+  function moveSkill(offset) {
+    if (!criteria.length) return;
+    const nextIndex = Math.max(0, Math.min(criteria.length - 1, selectedSkillIndex + offset));
+    update({ selectedSkill: criteria[nextIndex] });
+  }
   if (!kids.length) {
     return <><section className='card'><h2>No learners to assess</h2><p className='muted'>Mark learners as present on the register first.</p></section><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back to register</button></div></>;
   }
   return <>
     <section className='card assessment-choice'><div className='assessment-mode-head'><h2>Assess</h2><div className='assess-mode-grid'>{assessmentModes.map(item => <button key={item.id} className={'assess-mode ' + (mode === item.id ? 'on' : '')} onClick={() => update({ assessmentMode: item.id, selectedSkill })}><strong>{item.title}</strong></button>)}</div></div></section>
     {mode === 'swimmer' && selected && <div className='grid2 assessment-layout'><section className='card learner-rail'><h2>Children</h2>{kids.map(p => <button className={'learner-button ' + (p.id === selected.id ? 'on' : '')} key={p.id} onClick={() => update({ selected: p.id })}><span>{p.name}</span><small>{completionText(state, lesson, p)}</small></button>)}</section><section className='card assessment-card'><div className='assessment-head child-assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{completionText(state, lesson, selected)}</p></div><div className='child-stepper'><span>{selectedIndex + 1} of {kids.length}</span><div><button className='child-step-btn' disabled={selectedIndex === 0} onClick={() => moveChild(-1)} aria-label='Previous child'>‹</button><button className='child-step-btn' disabled={selectedIndex === kids.length - 1} onClick={() => moveChild(1)} aria-label='Next child'>›</button></div></div></div>{lesson.mode !== 'National Curriculum only' && <><div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div><p className='muted'>Higher distances also mark matching lower-distance skills.</p>{criteria.map(c => <SkillScore key={c} criteria={c} value={selected.res?.[c]} onScore={v => scoreLearner(selected, c, v)} />)}</>}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}</section></div>}
-    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head'><div><h2>Choose a skill</h2></div></div>{criteria.length ? <><Select label='Skill' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={criteria.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => <div className='skill-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{completionText(state, lesson, p)}</p></div><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreButtonLabels[v]}</button>)}</div></div>)}</div></> : <p className='muted'>This session is National Curriculum only, so there are no group skills to assess here.</p>}</section>}
+    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head group-assessment-head'><div><h2>Group assessment</h2><p className='muted'>{criteria.length ? `Skill ${selectedSkillIndex + 1} of ${criteria.length}` : 'No skills'}</p></div>{criteria.length > 1 && <div className='child-stepper'><div><button className='child-step-btn' disabled={selectedSkillIndex === 0} onClick={() => moveSkill(-1)} aria-label='Previous skill'>‹</button><button className='child-step-btn' disabled={selectedSkillIndex === criteria.length - 1} onClick={() => moveSkill(1)} aria-label='Next skill'>›</button></div></div>}</div>{criteria.length ? <><Select label='Skill' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={criteria.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => <div className='skill-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{completionText(state, lesson, p)}</p></div><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreButtonLabels[v]}</button>)}</div></div>)}</div></> : <p className='muted'>This session is National Curriculum only, so there are no group skills to assess here.</p>}</section>}
     <div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button>{coachOnly ? <button className='btn org' onClick={() => update({ lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item), step: 'list', active: '' })}>Save & finish</button> : <button className='btn org' onClick={() => update({ step: 'save' })}>Save session</button>}</div>
   </>;
 }
