@@ -848,8 +848,10 @@ function Register({ state, update, lesson }) {
   const kids = state.learners.filter(p => p.lesson === lesson.id);
   const [names, setNames] = useState('');
   const [openNotes, setOpenNotes] = useState('');
+  const [showAllNotes, setShowAllNotes] = useState(false);
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
+  const lessonNotes = kids.flatMap(learner => (Array.isArray(learner.notes) ? learner.notes : []).map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name })));
 
   function changeLearner(id, patch) {
     update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) });
@@ -868,7 +870,18 @@ function Register({ state, update, lesson }) {
 
   return <>
     <section className='card register-card'>
-      <div className='register-head'><h2>Register</h2><span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span></div>
+      <div className='register-head'>
+        <h2>Register</h2>
+        <div className='register-head-actions'>
+          {lessonNotes.length > 0 && <button className='lesson-note-alert' onClick={() => setShowAllNotes(value => !value)}><span>📝</span><b>{lessonNotes.length}</b></button>}
+          <span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span>
+        </div>
+      </div>
+      {showAllNotes && lessonNotes.length > 0 && <div className='lesson-notes-summary'>
+        {kids.filter(learner => Array.isArray(learner.notes) && learner.notes.length > 0).map(learner => <button key={learner.id} onClick={() => { setOpenNotes(learner.id); setShowAllNotes(false); }}>
+          <span><strong>{learner.name}</strong><small>{learner.notes.length} note{learner.notes.length === 1 ? '' : 's'}</small></span><b>›</b>
+        </button>)}
+      </div>}
       <div className='register-list'>
         {kids.map(p => {
           const noteCount = Array.isArray(p.notes) ? p.notes.length : 0;
