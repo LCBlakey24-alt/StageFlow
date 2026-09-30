@@ -43,6 +43,13 @@ function mergeGroupTemplates(savedGroups = [], fallbackGroups = []) {
   return [...mergedDefaults, ...customGroups];
 }
 
+function mergeStaff(savedStaff = [], fallbackStaff = []) {
+  const savedById = new Map(savedStaff.map(person => [person.id, person]));
+  const defaults = fallbackStaff.map(person => ({ ...person, ...(savedById.get(person.id) || {}) }));
+  const custom = savedStaff.filter(person => !fallbackStaff.some(fallback => fallback.id === person.id));
+  return [...defaults, ...custom];
+}
+
 function normaliseProgrammeName(programme) {
   if (programme === 'Evening Swim Lessons') return 'Evening Swim Group';
   if (programme === 'Evening 1:1' || programme === 'Evening Swim 121' || programme === 'Evening Swim One-to-one') return 'Evening Swim 1:1';
@@ -118,7 +125,9 @@ export function normaliseState(saved, fallback) {
       coach: lesson.coach || '',
       name: lesson.name || 'Untitled lesson',
       groupTemplateId: defaultGroupForProgramme(programme, framework, lesson.groupTemplateId),
-      mode: lesson.mode || framework.mode || 'Stages + National Curriculum'
+      mode: lesson.mode || framework.mode || 'Stages + National Curriculum',
+      startedAt: lesson.startedAt || '',
+      completedAt: lesson.completedAt || ''
     };
   });
 
@@ -150,7 +159,7 @@ export function normaliseState(saved, fallback) {
     lessons: safeLessons,
     learners: safeLearners,
     certificates: Array.isArray(base.certificates) ? base.certificates : fallback.certificates,
-    staff: Array.isArray(base.staff) ? base.staff : fallback.staff,
+    staff: mergeStaff(Array.isArray(base.staff) ? base.staff : [], fallback.staff || []),
     pack: { ...(fallback.pack || {}), ...(base.pack || {}) },
     audit: Array.isArray(base.audit) ? base.audit : fallback.audit,
     currentDay: base.currentDay || fallback.currentDay || 'Tuesday',
