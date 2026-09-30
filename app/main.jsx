@@ -463,14 +463,6 @@ function AdminTimetable({ state, update }) {
   const day = state.currentDay || 'Tuesday';
   const sorted = visibleLessonsForDay(state, day).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 
-  useEffect(() => {
-    Promise.all([
-      import('./lib/weekCalendarPlanner.js'),
-      import('./lib/weekCalendarMove.js'),
-      import('./lib/weekCalendarCopy.js')
-    ]).catch(error => console.error('Stage Flow admin planner failed to load', error));
-  }, []);
-
   function newLesson() {
     const selectedProgramme = state.timetableFilter && state.timetableFilter !== 'All' ? normaliseProgrammeName(state.timetableFilter) : 'School Swimming';
     const groupId = defaultGroupForProgramme(selectedProgramme, groups(state));
@@ -480,7 +472,7 @@ function AdminTimetable({ state, update }) {
   }
 
   return <>
-    <section className='card calendar-toolbar'><div><h2>Admin planner · {day}</h2></div><div><Select label='Programme filter' value={state.timetableFilter || 'All'} onChange={v => update({ timetableFilter: v })} options={programmeFilters.map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={newLesson}>+ Add class/session</button></div></section>
+    <section className='card calendar-toolbar'><div><h2>Admin sessions · {day}</h2><p className='muted'>Stable session manager</p></div><div><Select label='Programme filter' value={state.timetableFilter || 'All'} onChange={v => update({ timetableFilter: v })} options={programmeFilters.map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={newLesson}>+ Add class/session</button></div></section>
     <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => update({ currentDay: d })}>{d}</button>)}</div>
     {sorted.length ? sorted.map(lesson => <LessonCard key={lesson.id} state={state} update={update} lesson={lesson} />) : <section className='card'><h2>No classes on {day}</h2><button className='btn org' onClick={newLesson}>+ Add class/session</button></section>}
   </>;
