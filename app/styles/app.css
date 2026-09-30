@@ -158,6 +158,9 @@ textarea{min-height:92px;resize:vertical}
 .assessment-list-button strong{font-size:16px;line-height:1.2}
 .assessment-list-button small{color:var(--muted);font-weight:850}
 .assessment-list-button>b{font-size:24px;line-height:1;color:var(--orange)}
+.assessment-list-button.started{border-left:5px solid var(--blue);background:#f8fbff}
+.assessment-list-button.all-marked{border-left:5px solid var(--orange);background:#fffaf5}
+
 .assessment-back{border:0;background:transparent;color:var(--navy);padding:0;margin:0 0 12px;font-weight:1000}
 
 .assessment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
