@@ -45,8 +45,23 @@ function mergeGroupTemplates(savedGroups = [], fallbackGroups = []) {
 
 function mergeStaff(savedStaff = [], fallbackStaff = []) {
   const savedById = new Map(savedStaff.map(person => [person.id, person]));
-  const defaults = fallbackStaff.map(person => ({ ...person, ...(savedById.get(person.id) || {}) }));
-  const custom = savedStaff.filter(person => !fallbackStaff.some(fallback => fallback.id === person.id));
+  const legacyDemoIds = new Set(['s1', 's2', 's3']);
+  const defaults = fallbackStaff.map(person => {
+    const saved = savedById.get(person.id) || {};
+    return {
+      ...person,
+      ...saved,
+      // Keep the current demo identities/roles authoritative while preserving
+      // any edited permissions or access code already stored on this device.
+      name: person.name,
+      role: person.role,
+      accessCode: saved.accessCode || person.accessCode
+    };
+  });
+  const custom = savedStaff.filter(person =>
+    !fallbackStaff.some(fallback => fallback.id === person.id) &&
+    !legacyDemoIds.has(person.id)
+  );
   return [...defaults, ...custom];
 }
 
