@@ -164,7 +164,8 @@ export function normaliseState(saved, fallback) {
       res: learner.res || {},
       dist: learner.dist || { front: '0m', back: '0m' },
       nc: learner.nc || {},
-      sessionNote: learner.sessionNote || ''
+      sessionNote: learner.sessionNote || '',
+      notes: Array.isArray(learner.notes) ? learner.notes : []
     };
 
     // Simplified Stage Flow model:
