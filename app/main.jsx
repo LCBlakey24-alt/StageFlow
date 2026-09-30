@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/app.css';
 import './styles/calendar-overlay.css';
@@ -6,6 +6,29 @@ import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCrit
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const COACH_SESSION_KEY = 'stageflow-coach-session';
+
+function todayWeekday() {
+  const index = new Date().getDay();
+  return index >= 1 && index <= 5 ? days[index - 1] : days[0];
+}
+
+function readCoachSessionStaffId() {
+  try { return window.sessionStorage.getItem(COACH_SESSION_KEY) || ''; } catch { return ''; }
+}
+
+function saveCoachSessionStaffId(id) {
+  try { window.sessionStorage.setItem(COACH_SESSION_KEY, id || ''); } catch {}
+}
+
+function clearCoachSessionStaffId() {
+  try { window.sessionStorage.removeItem(COACH_SESSION_KEY); } catch {}
+}
+
+function coachSessionStaff(state) {
+  const id = readCoachSessionStaffId();
+  return (state.staff || []).find(staff => staff.id === id) || null;
+}
 const durations = [15, 30, 45, 60, 75, 90, 105, 120];
 const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
@@ -42,9 +65,9 @@ const starter = {
     { id: 'cert2', name: 'National Curriculum Certificate', rule: 'National Curriculum achieved', font: 'Sans Serif', size: 28, groupBy: 'Award' }
   ],
   staff: [
-    { id: 's1', name: 'Lewis', role: 'Lead Coach', sessions: true, groups: true, learners: true, assess: true, export: false, framework: false, certificates: false },
-    { id: 's2', name: 'Sarah', role: 'Coach', sessions: true, groups: false, learners: true, assess: true, export: false, framework: false, certificates: false },
-    { id: 's3', name: 'Admin User', role: 'Admin', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
+    { id: 's1', name: 'Lewis', role: 'Lead Coach', accessCode: '13579', sessions: true, groups: true, learners: true, assess: true, export: false, framework: false, certificates: false },
+    { id: 's2', name: 'Sarah', role: 'Coach', accessCode: '24680', sessions: true, groups: false, learners: true, assess: true, export: false, framework: false, certificates: false },
+    { id: 's3', name: 'Admin User', role: 'Admin', accessCode: '80421', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
   audit: ['Core programme wording cleaned']
@@ -252,7 +275,7 @@ function Home({ state, update, hydroStatus, enableHydrotherapy }) {
   return <>
     <section className='hero stage-hero'><h1>Teach. Track. Progress.</h1></section>
     <section className='quick-actions'>
-      <button className='action-card primary-action' onClick={() => next && update({ screen: 'timetable', active: next.id, step: 'assess', assessmentMode: 'swimmer', selected: state.learners.find(p => p.lesson === next.id && p.att !== 'Absent')?.id || '' })}><span>Start Assessment</span></button>
+      <button className='action-card primary-action' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>Start Assessment</span></button>
       <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span></button>
       <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>Criteria Groups</span></button>
       <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress</span></button>
@@ -269,9 +292,145 @@ function Home({ state, update, hydroStatus, enableHydrotherapy }) {
   </>;
 }
 
-function Timetable({ state, update }) {
+function CoachPinGate({ state, onUnlock }) {
+  const [digits, setDigits] = useState(['', '', '', '', '']);
+  const [error, setError] = useState('');
+
+  function tryUnlock(nextDigits) {
+    const code = nextDigits.join('');
+    if (code.length !== 5) return;
+    const staff = (state.staff || []).find(person => String(person.accessCode || '') === code);
+    if (!staff) {
+      setError('Code not recognised');
+      return;
+    }
+    setError('');
+    onUnlock(staff.id);
+  }
+
+  function setDigit(index, raw, input) {
+    const clean = String(raw || '').replace(/\D/g, '');
+    if (clean.length > 1) {
+      const pasted = clean.slice(0, 5).split('');
+      const next = ['', '', '', '', ''];
+      pasted.forEach((digit, offset) => { if (index + offset < 5) next[index + offset] = digit; });
+      setDigits(next);
+      if (next.every(Boolean)) tryUnlock(next);
+      return;
+    }
+    const next = [...digits];
+    next[index] = clean.slice(-1);
+    setDigits(next);
+    setError('');
+    if (next[index] && index < 4) input?.nextElementSibling?.focus();
+    if (next.every(Boolean)) window.setTimeout(() => tryUnlock(next), 60);
+  }
+
+  function keyDown(index, event) {
+    if (event.key === 'Backspace' && !digits[index] && index > 0) {
+      event.currentTarget.previousElementSibling?.focus();
+    }
+  }
+
+  return <>
+    <section className='hero compact-hero'><h1>Coach access</h1></section>
+    <section className='card coach-pin-card'>
+      <h2>Enter your 5-digit code</h2>
+      <div className='coach-pin-row'>
+        {digits.map((digit, index) => <input
+          key={index}
+          className='coach-pin-input'
+          value={digit}
+          aria-label={`Code digit ${index + 1}`}
+          inputMode='numeric'
+          pattern='[0-9]*'
+          maxLength={1}
+          autoFocus={index === 0}
+          onChange={event => setDigit(index, event.target.value, event.currentTarget)}
+          onKeyDown={event => keyDown(index, event)}
+          onPaste={event => {
+            const text = event.clipboardData?.getData('text') || '';
+            if (/^\d{5}$/.test(text)) {
+              event.preventDefault();
+              const next = text.split('');
+              setDigits(next);
+              tryUnlock(next);
+            }
+          }}
+        />)}
+      </div>
+      {error && <p className='coach-pin-error'>{error}</p>}
+      <p className='muted'>Your code opens only the sessions and tools you have permission to use.</p>
+    </section>
+  </>;
+}
+
+function CoachLessonBar({ state, lesson, update }) {
+  const learners = state.learners.filter(learner => learner.lesson === lesson.id);
+  const isDone = !!lesson.completedAt;
+  const isStarted = !!lesson.startedAt && !isDone;
+
+  function openLesson() {
+    update({
+      lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, startedAt: item.startedAt || new Date().toISOString() } : item),
+      active: lesson.id,
+      currentDay: lessonDay(lesson),
+      step: 'register'
+    });
+  }
+
+  return <button className={'coach-lesson-bar ' + (isDone ? 'done' : isStarted ? 'started' : '')} onClick={openLesson}>
+    <span className='coach-lesson-time'>{lesson.time}</span>
+    <span className='coach-lesson-main'><strong>{lesson.name}</strong><small>{lesson.school} · {learners.length} learner{learners.length === 1 ? '' : 's'}</small></span>
+    <span className='coach-lesson-status'>{isDone ? '✓ Saved' : isStarted ? 'Continue' : 'Open'}</span>
+  </button>;
+}
+
+function CoachToday({ state, update, staff }) {
+  const day = todayWeekday();
+  const lessons = [...state.lessons]
+    .filter(lesson => lessonDay(lesson) === day)
+    .filter(lesson => staff.role === 'Admin' || lesson.coach === staff.name)
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+
+  return <section className='card coach-day-card'>
+    <div className='coach-day-head'><div><p className='muted'>Today</p><h2>{day}</h2></div><span className='pill'>{lessons.length} session{lessons.length === 1 ? '' : 's'}</span></div>
+    <div className='coach-lesson-list'>
+      {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions assigned today.</p>}
+    </div>
+  </section>;
+}
+
+function CoachWeek({ state, update, staff }) {
+  const coachLessons = [...state.lessons]
+    .filter(lesson => staff.role === 'Admin' || lesson.coach === staff.name)
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+
+  return <div className='coach-week-grid'>
+    {days.map(day => {
+      const lessons = coachLessons.filter(lesson => lessonDay(lesson) === day);
+      return <section className='card coach-week-day' key={day}>
+        <div className='coach-week-day-head'><h2>{day}</h2><span>{lessons.length}</span></div>
+        <div className='coach-lesson-list'>
+          {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions</p>}
+        </div>
+      </section>;
+    })}
+  </div>;
+}
+
+function AdminTimetable({ state, update }) {
   const day = state.currentDay || 'Tuesday';
   const sorted = visibleLessonsForDay(state, day).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+
+  useEffect(() => {
+    Promise.all([
+      import('./lib/weekCalendarPlanner.js'),
+      import('./lib/weekCalendarMove.js'),
+      import('./lib/weekCalendarCopy.js')
+    ]).catch(error => console.error('Stage Flow admin planner failed to load', error));
+  }, []);
+
   function newLesson() {
     const selectedProgramme = state.timetableFilter && state.timetableFilter !== 'All' ? normaliseProgrammeName(state.timetableFilter) : 'School Swimming';
     const groupId = defaultGroupForProgramme(selectedProgramme, groups(state));
@@ -279,11 +438,47 @@ function Timetable({ state, update }) {
     const lesson = { id, day, time: '09:00', duration: 30, school: defaultSchoolForProgramme(selectedProgramme), year: 'Year group', className: '', coach: '', name: defaultLessonNameForProgramme(selectedProgramme), programme: selectedProgramme, groupTemplateId: groupId, mode: 'Stages + National Curriculum' };
     update({ lessons: [...state.lessons, lesson], active: id, step: 'edit', draft: null });
   }
+
   return <>
-    <section className='hero compact-hero'><h1>Timetable</h1></section>
+    <section className='card calendar-toolbar'><div><h2>Admin planner · {day}</h2></div><div><Select label='Programme filter' value={state.timetableFilter || 'All'} onChange={v => update({ timetableFilter: v })} options={programmeFilters.map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={newLesson}>+ Add class/session</button></div></section>
     <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => update({ currentDay: d })}>{d}</button>)}</div>
-    <section className='card calendar-toolbar'><div><h2>{day}</h2></div><div><Select label='Programme filter' value={state.timetableFilter || 'All'} onChange={v => update({ timetableFilter: v })} options={programmeFilters.map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={newLesson}>+ Add class/session</button></div></section>
-    {sorted.length ? sorted.map(lesson => <LessonCard key={lesson.id} state={state} update={update} lesson={lesson} />) : <section className='card'><h2>No classes on {day}</h2><p className='muted'>Add a class/session to start building the timetable.</p><button className='btn org' onClick={newLesson}>+ Add class/session</button></section>}
+    {sorted.length ? sorted.map(lesson => <LessonCard key={lesson.id} state={state} update={update} lesson={lesson} />) : <section className='card'><h2>No classes on {day}</h2><button className='btn org' onClick={newLesson}>+ Add class/session</button></section>}
+  </>;
+}
+
+function Timetable({ state, update }) {
+  const [staffId, setStaffId] = useState(() => readCoachSessionStaffId());
+  const [view, setView] = useState('today');
+  const staff = (state.staff || []).find(person => person.id === staffId) || null;
+
+  function unlock(id) {
+    saveCoachSessionStaffId(id);
+    setStaffId(id);
+    setView('today');
+  }
+
+  function signOut() {
+    clearCoachSessionStaffId();
+    setStaffId('');
+    setView('today');
+  }
+
+  if (!staff) return <CoachPinGate state={state} onUnlock={unlock} />;
+
+  const canManage = staff.role === 'Admin';
+  return <>
+    <section className='hero compact-hero coach-hero'>
+      <div><p>{staff.role}</p><h1>{staff.name}</h1></div>
+      <button className='btn coach-signout' onClick={signOut}>Lock</button>
+    </section>
+    <div className='tabs coach-tabs'>
+      <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>Today</button>
+      <button className={view === 'calendar' ? 'on' : ''} onClick={() => setView('calendar')}>Calendar</button>
+      {canManage && <button className={view === 'admin' ? 'on' : ''} onClick={() => setView('admin')}>Admin</button>}
+    </div>
+    {view === 'today' && <CoachToday state={state} update={update} staff={staff} />}
+    {view === 'calendar' && <CoachWeek state={state} update={update} staff={staff} />}
+    {view === 'admin' && canManage && <AdminTimetable state={state} update={update} />}
   </>;
 }
 
@@ -293,10 +488,14 @@ function LessonCard({ state, update, lesson }) {
 }
 
 function Lesson({ state, update, lesson }) {
-  const currentStep = state.step || 'register';
+  const staff = coachSessionStaff(state);
+  const coachOnly = !!staff && staff.role !== 'Admin';
+  const requestedStep = state.step || 'register';
+  const currentStep = coachOnly && requestedStep === 'edit' ? 'register' : requestedStep;
+  const steps = coachOnly ? ['register', 'assess', 'save'] : ['edit', 'register', 'assess', 'save'];
   return <>
-    <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupLabel(state, lesson)} · {groupCriteria(state, lesson).length} criteria</p><div className='steps'>{['edit', 'register', 'assess', 'save'].map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess' : step}</span>)}</div></section>
-    {currentStep === 'edit' && <LessonSetup state={state} update={update} lesson={lesson} />}
+    <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupCriteria(state, lesson).length} criteria</p><div className='steps'>{steps.map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess' : step}</span>)}</div></section>
+    {currentStep === 'edit' && !coachOnly && <LessonSetup state={state} update={update} lesson={lesson} />}
     {currentStep === 'register' && <Register state={state} update={update} lesson={lesson} />}
     {currentStep === 'assess' && <Assess state={state} update={update} lesson={lesson} />}
     {currentStep === 'save' && <SaveLesson state={state} update={update} lesson={lesson} />}
@@ -349,7 +548,7 @@ function Register({ state, update, lesson }) {
   return <>
     <section className='card'><h2>Register</h2>{kids.map(p => <div className='criteria register-row' key={p.id}><div><b>{p.name}</b><p className='muted'>{p.att} · {completionText(state, lesson, p)}</p></div><div className='score-buttons'>{attendanceOptions.map(option => <button key={option} className={'score-btn ' + (p.att === option ? 'on' : '')} onClick={() => changeLearner(p.id, { att: option })}>{option}</button>)}<button className='score-btn' onClick={() => removeLearner(p.id)}>Remove</button></div></div>)}</section>
     <section className='card'><h2>Add learners</h2><p className='muted'>One name per line.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names to this session</button></section>
-    <div className='footer'><button className='btn' onClick={() => update({ step: 'edit' })}>Back</button><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button></div>
+    <div className='footer'><button className='btn' onClick={() => update(coachSessionStaff(state)?.role !== 'Admin' ? { step: 'list', active: '' } : { step: 'edit' })}>{coachSessionStaff(state)?.role !== 'Admin' ? 'Back to today' : 'Back'}</button><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button></div>
   </>;
 }
 
@@ -396,7 +595,7 @@ function SaveLesson({ state, update, lesson }) {
   return <>
     <section className='card'><h2>Session saved</h2><p className='muted'>{lesson.name}</p><div className='grid stat-grid'><div className='card stat-card'><h2>{present.length}</h2><p className='muted'>Present</p></div><div className='card stat-card'><h2>{complete.length}</h2><p className='muted'>Completed criteria</p></div><div className='card stat-card'><h2>{criteria.length}</h2><p className='muted'>Criteria assessed</p></div></div></section>
     <section className='card'><h2>Session summary</h2>{present.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>
-    <div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Back to assessment</button><button className='btn org' onClick={() => update({ step: 'list', active: '' })}>Finish</button></div>
+    <div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Back to assessment</button><button className='btn org' onClick={() => update({ lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item), step: 'list', active: '' })}>Finish</button></div>
   </>;
 }
 
