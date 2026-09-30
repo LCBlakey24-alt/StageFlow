@@ -254,8 +254,45 @@ function createLearnersFromText(text, lessonId, groupStage) {
   }));
 }
 
+function isStandaloneStageFlow() {
+  try {
+    return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  } catch {
+    return false;
+  }
+}
+
+function isInstalledAppLaunch() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    return params.get('app') === '1' || isStandaloneStageFlow();
+  } catch {
+    return isStandaloneStageFlow();
+  }
+}
+
+function loadInitialAppState() {
+  const loaded = loadAppState(starter);
+  if (!isInstalledAppLaunch()) return loaded;
+
+  // Require fresh staff access each time the installed app starts, while
+  // keeping ordinary refreshes in the same app session signed in.
+  try {
+    const launchKey = 'stageflow-installed-launch-active';
+    if (!window.sessionStorage.getItem(launchKey)) {
+      clearCoachSessionStaffId();
+      window.sessionStorage.setItem(launchKey, '1');
+    }
+  } catch {}
+
+  if (!readCoachSessionStaffId()) {
+    return { ...loaded, screen: 'timetable', step: 'list', active: '', selected: '', selectedSkill: '' };
+  }
+  return loaded;
+}
+
 function App() {
-  const [state, setState] = useState(() => loadAppState(starter));
+  const [state, setState] = useState(() => loadInitialAppState());
   const [hydroStatus, setHydroStatus] = useState('idle');
   const [authVersion, setAuthVersion] = useState(0);
 
@@ -285,7 +322,7 @@ function App() {
   function lockStaff() {
     clearCoachSessionStaffId();
     setAuthVersion(version => version + 1);
-    update({ screen: 'home', step: 'list', active: '', selected: '', selectedSkill: '' });
+    update({ screen: isInstalledAppLaunch() ? 'timetable' : 'home', step: 'list', active: '', selected: '', selectedSkill: '' });
   }
 
   void authVersion;
@@ -321,9 +358,75 @@ function App() {
   </>;
 }
 
+function InstallStageFlowCard({ update }) {
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installed, setInstalled] = useState(() => isStandaloneStageFlow());
+  const [showHelp, setShowHelp] = useState(false);
+
+  useEffect(() => {
+    function beforeInstall(event) {
+      event.preventDefault();
+      setInstallPrompt(event);
+    }
+    function didInstall() {
+      setInstalled(true);
+      setInstallPrompt(null);
+      setShowHelp(false);
+    }
+
+    window.addEventListener('beforeinstallprompt', beforeInstall);
+    window.addEventListener('appinstalled', didInstall);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', beforeInstall);
+      window.removeEventListener('appinstalled', didInstall);
+    };
+  }, []);
+
+  async function install() {
+    if (installed) {
+      update({ screen: 'timetable', step: 'list', active: '' });
+      return;
+    }
+    if (!installPrompt) {
+      setShowHelp(true);
+      return;
+    }
+    installPrompt.prompt();
+    try {
+      const choice = await installPrompt.userChoice;
+      if (choice?.outcome === 'accepted') setInstalled(true);
+    } finally {
+      setInstallPrompt(null);
+    }
+  }
+
+  const isAppleMobile = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '') ||
+    (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+
+  return <section className='card install-stageflow-card'>
+    <div className='install-stageflow-copy'>
+      <span className='install-app-mark'>SF</span>
+      <div>
+        <p className='install-kicker'>{installed ? 'Installed' : 'Phone & tablet app'}</p>
+        <h2>{installed ? 'Stage Flow is on this device' : 'Install Stage Flow'}</h2>
+        <p className='muted'>{installed
+          ? 'Open staff access whenever you are ready.'
+          : 'Add Stage Flow to your home screen. The app icon opens directly to staff access.'}</p>
+      </div>
+    </div>
+    <button className='btn org install-stageflow-button' onClick={install}>{installed ? 'Open staff access' : 'Install app'}</button>
+    {showHelp && <div className='install-help'>
+      <strong>{isAppleMobile ? 'On iPhone or iPad' : 'Install from your browser'}</strong>
+      <p>{isAppleMobile
+        ? 'Open this page in Safari, tap Share, then choose Add to Home Screen.'
+        : 'Open your browser menu and choose Install app or Add to Home screen.'}</p>
+    </div>}
+  </section>;
+}
+
 function Home({ state, update, hydroStatus, enableHydrotherapy }) {
   return <>
-    <section className='hero stage-hero'><h1>Teach. Track. Progress.</h1></section>
+    <section className='hero stage-hero'><h1>Teach. Track. Progress.</h1><p>Timetables, attendance, notes and optional assessment for coached activities.</p></section>
     <section className='quick-actions'>
       <button className='action-card primary-action' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}><span>Start Assessment</span></button>
       <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}><span>My Timetable</span></button>
@@ -335,6 +438,7 @@ function Home({ state, update, hydroStatus, enableHydrotherapy }) {
       <p className='muted'>Session details, venues, learner information and assessments are protected behind your staff code.</p>
       <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Enter staff code</button>
     </section>
+    <InstallStageFlowCard update={update} />
     <section className='card hydro-home-card'>
       <h2>SEN Hydrotherapy <span className='pill'>Demo</span></h2>
       <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Staff access required</button>

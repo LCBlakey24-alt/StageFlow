@@ -1,13 +1,17 @@
 {
   "name": "Stage Flow",
   "short_name": "Stage Flow",
-  "description": "Stage Flow assessment, SEN hydrotherapy diary and timeline demo workflow.",
-  "start_url": "/",
+  "description": "Timetables, attendance, notes and optional assessment for coached activities.",
+  "id": "/?app=1",
+  "start_url": "/?app=1",
   "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "background_color": "#f8fbff",
-  "theme_color": "#0f172a",
-  "orientation": "portrait-primary",
+  "theme_color": "#071527",
   "icons": [
     {
       "src": "/stage-flow-icon.svg",
@@ -16,5 +20,24 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["education", "productivity"]
+  "shortcuts": [
+    {
+      "name": "Staff access",
+      "short_name": "Staff access",
+      "description": "Open Stage Flow staff access",
+      "url": "/?app=1",
+      "icons": [
+        {
+          "src": "/stage-flow-icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "categories": [
+    "education",
+    "productivity",
+    "sports"
+  ]
 }
