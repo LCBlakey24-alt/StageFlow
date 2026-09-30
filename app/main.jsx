@@ -673,10 +673,14 @@ function Assess({ state, update, lesson }) {
     {individualList && <section className='card assessment-picker'>
       <div className='assessment-picker-head'><h2>Choose a child</h2><span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span></div>
       <div className='assessment-list'>
-        {kids.map(child => <button className='assessment-list-button' key={child.id} onClick={() => openChild(child)}>
-          <span><strong>{child.name}</strong><small>{childAssessmentSummary(criteria, child)}</small></span>
-          <b>›</b>
-        </button>)}
+        {kids.map(child => {
+          const marked = criteria.filter(skill => isMarkedAssessment(child.res?.[skill])).length;
+          const progressClass = marked && marked === criteria.length ? ' all-marked' : marked ? ' started' : '';
+          return <button className={'assessment-list-button' + progressClass} key={child.id} onClick={() => openChild(child)}>
+            <span><strong>{child.name}</strong><small>{childAssessmentSummary(criteria, child)}</small></span>
+            <b>›</b>
+          </button>;
+        })}
       </div>
     </section>}
 
@@ -699,7 +703,8 @@ function Assess({ state, update, lesson }) {
       {criteria.length ? <div className='assessment-list'>
         {criteria.map(skill => {
           const assessed = kids.filter(child => isMarkedAssessment(child.res?.[skill])).length;
-          return <button className='assessment-list-button' key={skill} onClick={() => openSkill(skill)}>
+          const progressClass = assessed && assessed === kids.length ? ' all-marked' : assessed ? ' started' : '';
+          return <button className={'assessment-list-button' + progressClass} key={skill} onClick={() => openSkill(skill)}>
             <span><strong>{skill}</strong><small>{assessed ? `${assessed}/${kids.length} marked` : 'Not marked yet'}</small></span>
             <b>›</b>
           </button>;
