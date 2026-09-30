@@ -302,6 +302,7 @@ export const demoFramework = {
   area: 'School Swimming',
   mode: 'Stages + National Curriculum',
   scoringSystem: 'stageFlowActivity',
+  passMarks: ['Needs practice', 'Close', 'Almost there', 'Passed'],
   stages: allCriteriaSectionNames,
   criteria: combinedActivityCriteria,
   nationalCurriculum,
