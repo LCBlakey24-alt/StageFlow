@@ -125,7 +125,9 @@ export function normaliseState(saved, fallback) {
     ? framework.groupTemplates.map(g => `${g.name}: ${g.detail || ''}`)
     : framework.groups || [];
 
-  const lessons = Array.isArray(base.lessons) ? base.lessons : fallback.lessons;
+  const savedLessons = Array.isArray(base.lessons) ? base.lessons : [];
+  const reviewLessons = (fallback.lessons || []).filter(lesson => lesson.id === 'l7' && !savedLessons.some(savedLesson => savedLesson.id === lesson.id));
+  const lessons = savedLessons.length ? [...savedLessons, ...reviewLessons] : fallback.lessons;
   const safeLessons = lessons.map((lesson, index) => {
     const programme = inferProgramme(lesson, framework.area || fallback.framework?.area);
     return {
@@ -146,7 +148,12 @@ export function normaliseState(saved, fallback) {
     };
   });
 
-  const learners = Array.isArray(base.learners) ? base.learners : fallback.learners;
+  const savedLearners = Array.isArray(base.learners) ? base.learners : [];
+  const reviewLearners = (fallback.learners || []).filter(learner =>
+    String(learner.id || '').startsWith('demo-') &&
+    !savedLearners.some(savedLearner => savedLearner.id === learner.id)
+  );
+  const learners = savedLearners.length ? [...savedLearners, ...reviewLearners] : fallback.learners;
   const safeLearners = learners.map((learner, index) => {
     const safeLearner = {
       id: learner.id || `learner-${index}`,
@@ -156,7 +163,8 @@ export function normaliseState(saved, fallback) {
       att: learner.att || 'Present',
       res: learner.res || {},
       dist: learner.dist || { front: '0m', back: '0m' },
-      nc: learner.nc || {}
+      nc: learner.nc || {},
+      sessionNote: learner.sessionNote || ''
     };
 
     // Simplified Stage Flow model:
