@@ -828,7 +828,46 @@ function Certificates({ state, update }) {
   return <section className='card'><h2>Certificate templates</h2><p className='muted'>Certificate generation is still demo-level, but it now points at criteria completion rather than initial placement.</p><button className='btn org' onClick={addCert}>+ Add certificate template</button>{state.certificates.map(c => <div className='card' key={c.id}><Field label='Name' value={c.name} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, name: v } : x) })} /><Select label='Rule' value={c.rule} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, rule: v } : x) })} options={['Criteria group complete', 'National Curriculum achieved', 'Selected award only'].map(x => ({ value: x, label: x }))} /><Select label='Group by' value={c.groupBy} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, groupBy: v } : x) })} options={['Criteria group', 'School / venue', 'Award', 'All in one PDF'].map(x => ({ value: x, label: x }))} /></div>)}</section>;
 }
 function Permissions({ state, update }) {
-  return <section className='card'><h2>Staff permissions</h2>{state.staff.map(staff => <div className='card' key={staff.id}><h3>{staff.name}</h3><p className='muted'>{staff.role}</p>{['sessions', 'groups', 'learners', 'assess', 'export', 'framework', 'certificates'].map(key => <label className='pill' key={key}><input type='checkbox' checked={!!staff[key]} onChange={e => update({ staff: state.staff.map(s => s.id === staff.id ? { ...s, [key]: e.target.checked } : s) })} /> {key}</label>)}</div>)}</section>;
+  function patchStaff(id, patch) {
+    update({ staff: state.staff.map(person => person.id === id ? { ...person, ...patch } : person) });
+  }
+
+  function generateCode(id) {
+    const used = new Set(state.staff.filter(person => person.id !== id).map(person => String(person.accessCode || '')));
+    let code = '';
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      code = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      if (!used.has(code)) break;
+    }
+    patchStaff(id, { accessCode: code });
+  }
+
+  return <section className='card'>
+    <h2>Staff access</h2>
+    <div className='staff-access-list'>
+      {state.staff.map(staff => <div className='card staff-access-card' key={staff.id}>
+        <div className='staff-access-head'><div><h3>{staff.name}</h3><p className='muted'>{staff.role}</p></div></div>
+        <div className='staff-code-row'>
+          <label>5-digit coach code</label>
+          <div>
+            <input
+              className='staff-code-input'
+              inputMode='numeric'
+              pattern='[0-9]*'
+              maxLength={5}
+              value={staff.accessCode || ''}
+              onChange={e => patchStaff(staff.id, { accessCode: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+              aria-label={`${staff.name} access code`}
+            />
+            <button className='btn' onClick={() => generateCode(staff.id)}>New code</button>
+          </div>
+        </div>
+        <div className='staff-permission-list'>
+          {['sessions', 'groups', 'learners', 'assess', 'export', 'framework', 'certificates'].map(key => <label className='pill' key={key}><input type='checkbox' checked={!!staff[key]} onChange={e => patchStaff(staff.id, { [key]: e.target.checked })} /> {key}</label>)}
+        </div>
+      </div>)}
+    </div>
+  </section>;
 }
 
 function Field({ label, value, onChange, placeholder = '' }) {
