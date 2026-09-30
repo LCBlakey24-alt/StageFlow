@@ -55,7 +55,7 @@ function mergeStaff(savedStaff = [], fallbackStaff = []) {
       // any edited permissions or access code already stored on this device.
       name: person.name,
       role: person.role,
-      accessCode: saved.accessCode || person.accessCode
+      accessCode: (saved.name === 'Sarah' || saved.name === 'Admin User') ? person.accessCode : (saved.accessCode || person.accessCode)
     };
   });
   const custom = savedStaff.filter(person =>
@@ -139,7 +139,7 @@ export function normaliseState(saved, fallback) {
       school: normaliseProgrammeName(lesson.school) || (programme === 'Evening Swim 1:1' ? 'Evening Swim 1:1' : programme === 'Evening Swim Group' ? 'Evening Swim Group' : 'School / Venue'),
       year: lesson.year || 'Year group',
       className: lesson.className || '',
-      coach: lesson.coach || '',
+      coach: lesson.coach === 'Sarah' ? 'Lewis' : (lesson.coach || ''),
       name: lesson.name || 'Untitled lesson',
       groupTemplateId: defaultGroupForProgramme(programme, framework, lesson.groupTemplateId),
       mode: lesson.mode || framework.mode || 'Stages + National Curriculum',
