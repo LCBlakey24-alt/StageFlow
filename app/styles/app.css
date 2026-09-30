@@ -141,6 +141,10 @@ textarea{min-height:92px;resize:vertical}
 .staff-code-row>div{display:flex;gap:8px;align-items:center}
 .staff-code-input{max-width:150px;font-size:22px;letter-spacing:.2em;text-align:center;font-weight:1000}
 .staff-permission-list{display:flex;gap:6px;flex-wrap:wrap}
+.staff-access-card.code-warning{border-color:#fecaca;background:#fffafa}
+.warning-pill{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.staff-code-note{margin-top:12px;font-size:12px}
+
 
 
 
