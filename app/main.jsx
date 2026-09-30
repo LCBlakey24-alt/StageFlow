@@ -241,6 +241,7 @@ function createLearnersFromText(text, lessonId, groupStage) {
 function App() {
   const [state, setState] = useState(() => loadAppState(starter));
   const [hydroStatus, setHydroStatus] = useState('idle');
+  const [authVersion, setAuthVersion] = useState(0);
 
   async function enableHydrotherapy() {
     if (hydroStatus === 'loading' || hydroStatus === 'enabled') return;
@@ -259,56 +260,73 @@ function App() {
     setState(newState);
     saveAppState(newState);
   }
+
+  function unlockStaff(id) {
+    saveCoachSessionStaffId(id);
+    setAuthVersion(version => version + 1);
+  }
+
+  function lockStaff() {
+    clearCoachSessionStaffId();
+    setAuthVersion(version => version + 1);
+    update({ screen: 'home', step: 'list', active: '', selected: '', selectedSkill: '' });
+  }
+
+  void authVersion;
   const lesson = state.lessons.find(l => l.id === state.active);
   const activeStaff = coachSessionStaff(state);
   const coachOnly = !!activeStaff && activeStaff.role !== 'Admin';
-  const screens = coachOnly ? ['home', 'timetable'] : ['home', 'timetable', 'health', 'reports', 'settings'];
+  const protectedScreen = state.screen !== 'home';
+  const needsUnlock = protectedScreen && !activeStaff;
+  const screens = !activeStaff
+    ? ['home', 'timetable']
+    : coachOnly
+      ? ['home', 'timetable']
+      : ['home', 'timetable', 'health', 'reports', 'settings'];
+
   return <>
     <div className='top'>
       <div className='brand'>Stage Flow</div>
-      {activeStaff?.role === 'Admin' ? <button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset</button> : coachOnly ? <button className='btn' onClick={() => { clearCoachSessionStaffId(); location.reload(); }}>Lock</button> : null}
+      {activeStaff && <button className='btn' onClick={lockStaff}>Lock</button>}
     </div>
     <div className='wrap'>
-      <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list' })}>{screen[0].toUpperCase()}</button>)}</nav>
+      <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list', active: screen === 'timetable' ? state.active : '' })}>{screen[0].toUpperCase()}</button>)}</nav>
       <main>
-        {state.screen === 'home' && (coachOnly ? <CoachHome state={state} update={update} staff={activeStaff} /> : <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />)}
-        {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
-        {state.screen === 'timetable' && state.step !== 'list' && (lesson ? <Lesson state={state} update={update} lesson={lesson} /> : <MissingLesson update={update} />)}
-        {state.screen === 'health' && <HealthCheck state={state} update={update} />}
-        {state.screen === 'reports' && <Reports state={state} update={update} />}
-        {state.screen === 'settings' && <Settings state={state} update={update} />}
+        {needsUnlock ? <CoachPinGate state={state} onUnlock={unlockStaff} /> : <>
+          {state.screen === 'home' && (coachOnly ? <CoachHome state={state} update={update} staff={activeStaff} /> : <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />)}
+          {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
+          {state.screen === 'timetable' && state.step !== 'list' && (lesson ? <Lesson state={state} update={update} lesson={lesson} /> : <MissingLesson update={update} />)}
+          {state.screen === 'health' && <HealthCheck state={state} update={update} />}
+          {state.screen === 'reports' && <Reports state={state} update={update} />}
+          {state.screen === 'settings' && <Settings state={state} update={update} />}
+        </>}
       </main>
     </div>
   </>;
 }
 
-function MissingLesson({ update }) {
-  return <section className='card'><h2>Class/session not found</h2><p className='muted'>That class may have been deleted or old saved data pointed to a missing session.</p><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Back to timetable</button></section>;
-}
-
 function Home({ state, update, hydroStatus, enableHydrotherapy }) {
-  const day = state.currentDay || 'Tuesday';
-  const next = state.lessons.find(l => lessonDay(l) === day) || state.lessons[0];
-  const ncDone = state.learners.filter(p => nationalCurriculum.every(item => p.nc?.[item])).length;
   return <>
     <section className='hero stage-hero'><h1>Teach. Track. Progress.</h1></section>
     <section className='quick-actions'>
-      <button className='action-card primary-action' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>Start Assessment</span></button>
-      <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list' })}><span>My Timetable</span></button>
-      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups' })}><span>Criteria Groups</span></button>
-      <button className='action-card' onClick={() => update({ screen: 'reports' })}><span>Progress</span></button>
+      <button className='action-card primary-action' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}><span>Start Assessment</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}><span>My Timetable</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups', step: 'list', active: '' })}><span>Criteria Groups</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'reports', step: 'list', active: '' })}><span>Progress</span></button>
     </section>
-    {next ? <section className='card lesson next-lesson'><div className='time'>{next.time}</div><div><h2>{next.name}</h2><p className='muted'>{lessonDay(next)} · {next.school}</p></div><button className='btn org' onClick={() => update({ screen: 'timetable', active: next.id, step: 'register' })}>Open register</button></section> : <section className='card'><h2>No classes yet</h2><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Open timetable</button></section>}
-    <div className='grid stat-grid'><div className='card stat-card'><h2>{state.lessons.length}</h2><p className='muted'>Sessions</p></div><div className='card stat-card'><h2>{state.learners.length}</h2><p className='muted'>Learners</p></div><div className='card stat-card'><h2>{ncDone}</h2><p className='muted'>NC achieved</p></div></div>
+    <section className='card public-access-card'>
+      <h2>Staff access</h2>
+      <p className='muted'>Session details, venues, learner information and assessments are protected behind your staff code.</p>
+      <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Enter staff code</button>
+    </section>
     <section className='card hydro-home-card'>
       <h2>SEN Hydrotherapy <span className='pill'>Demo</span></h2>
-      <button className='btn org' disabled={hydroStatus === 'loading' || hydroStatus === 'enabled'} onClick={enableHydrotherapy}>
-        {hydroStatus === 'loading' ? 'Loading…' : hydroStatus === 'enabled' ? 'Hydrotherapy loaded' : hydroStatus === 'error' ? 'Try again' : 'Load hydrotherapy'}
-      </button>
-      <p className='muted' style={{ marginTop: 8 }}>Demo only — don’t use real pupil data yet.</p>
+      <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Staff access required</button>
+      <p className='muted' style={{ marginTop: 8 }}>Protected demo area — don’t use real pupil data yet.</p>
     </section>
   </>;
 }
+
 function CoachHome({ state, update, staff }) {
   const day = todayWeekday();
   const lessons = [...state.lessons]
@@ -479,29 +497,16 @@ function AdminTimetable({ state, update }) {
 }
 
 function Timetable({ state, update }) {
-  const [staffId, setStaffId] = useState(() => readCoachSessionStaffId());
   const [view, setView] = useState('today');
-  const staff = (state.staff || []).find(person => person.id === staffId) || null;
+  const staff = coachSessionStaff(state);
 
-  function unlock(id) {
-    saveCoachSessionStaffId(id);
-    setStaffId(id);
-    setView('today');
-  }
-
-  function signOut() {
-    clearCoachSessionStaffId();
-    setStaffId('');
-    setView('today');
-  }
-
-  if (!staff) return <CoachPinGate state={state} onUnlock={unlock} />;
+  if (!staff) return <CoachPinGate state={state} onUnlock={id => { saveCoachSessionStaffId(id); update({ screen: 'timetable', step: 'list' }); }} />;
 
   const canManage = staff.role === 'Admin';
   return <>
     <section className='hero compact-hero coach-hero'>
       <div><p>{staff.role}</p><h1>{staff.name}</h1></div>
-      <button className='btn coach-signout' onClick={signOut}>Lock</button>
+
     </section>
     <div className='tabs coach-tabs'>
       <button className={view === 'today' ? 'on' : ''} onClick={() => setView('today')}>Today</button>
