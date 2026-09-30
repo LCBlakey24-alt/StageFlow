@@ -213,8 +213,24 @@ export const schoolPeCriteria = {
 
 export const schoolSwimmingCriteria = jbSwimmingCriteria;
 export const eveningSwimCriteria = jbSwimmingCriteria;
+export const demoWaterConfidenceCriteria = {
+  'Demo Water Confidence': [
+    'I can enter the water safely',
+    'I can blow bubbles',
+    'I can put my face in the water',
+    'I can float on my front with support',
+    'I can float on my back with support',
+    'I can push and glide from the wall',
+    'I can jump in safely',
+    'I can return to the wall',
+    'I can climb out safely',
+    'I can listen and follow pool rules'
+  ]
+};
+
 export const stageCriteria = {
   ...jbSwimmingCriteria,
+  ...demoWaterConfidenceCriteria,
   ...gymnasticsCriteria,
   ...schoolPeCriteria
 };
@@ -224,12 +240,13 @@ const combinedActivityCriteria = stageCriteria;
 export const allSwimStageNames = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Stage 6', 'Stage 7', 'Self Rescue Award'];
 export const gymnasticsStageNames = ['Gymnastics Beginner', 'Gymnastics Improver', 'Gymnastics Advanced'];
 export const schoolPeStageNames = ['PE Fundamentals', 'PE Games Skills', 'PE Teamwork & Leadership'];
-export const allCriteriaSectionNames = [...allSwimStageNames, ...gymnasticsStageNames, ...schoolPeStageNames];
+export const allCriteriaSectionNames = [...allSwimStageNames, 'Demo Water Confidence', ...gymnasticsStageNames, ...schoolPeStageNames];
 
 export const schoolGroupTemplates = [
   { id: 'g1', name: 'School Group 1', detail: 'Stages 1-3', stages: ['Stage 1', 'Stage 2', 'Stage 3'], colour: 'blue', programme: 'School Swimming' },
   { id: 'g2', name: 'School Group 2', detail: 'Stages 4-5', stages: ['Stage 4', 'Stage 5'], colour: 'orange', programme: 'School Swimming' },
-  { id: 'g3', name: 'School Group 3', detail: 'Stage 6 + Self Rescue', stages: ['Stage 6', 'Self Rescue Award'], colour: 'gold', programme: 'School Swimming' }
+  { id: 'g3', name: 'School Group 3', detail: 'Stage 6 + Self Rescue', stages: ['Stage 6', 'Self Rescue Award'], colour: 'gold', programme: 'School Swimming' },
+  { id: 'demo-water', name: 'Demo Water Confidence', detail: 'Example I can skills for review', stages: ['Demo Water Confidence'], colour: 'blue', programme: 'School Swimming' }
 ];
 
 export const eveningGroupTemplates = [
@@ -294,11 +311,12 @@ export const demoFramework = {
 
 export const demoLessons = [
   { id: 'l1', day: 'Tuesday', time: '09:30', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Lewis', name: 'Year 5 School Group 1', programme: 'School Swimming', groupTemplateId: 'g1', mode: 'Stages + National Curriculum' },
-  { id: 'l2', day: 'Tuesday', time: '10:00', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Sarah', name: 'Year 5 School Group 2', programme: 'School Swimming', groupTemplateId: 'g2', mode: 'Stages + National Curriculum' },
+  { id: 'l2', day: 'Tuesday', time: '10:00', duration: 30, school: 'Greenfield Primary', year: 'Year 5', className: 'Oak', coach: 'Lewis', name: 'Year 5 School Group 2', programme: 'School Swimming', groupTemplateId: 'g2', mode: 'Stages + National Curriculum' },
   { id: 'l3', day: 'Wednesday', time: '17:00', duration: 30, school: 'Evening Swim Group', year: 'Junior beginners', className: 'Stage 1-3', coach: 'Lewis', name: 'Evening Swim Group 1', programme: 'Evening Swim Group', groupTemplateId: 'eg1', mode: 'Stages + National Curriculum' },
   { id: 'l4', day: 'Wednesday', time: '17:30', duration: 30, school: 'Evening Swim 1:1', year: '1:1 swimmer', className: 'All stages', coach: 'Lewis', name: 'Evening Swim 1:1', programme: 'Evening Swim 1:1', groupTemplateId: 'eg121', mode: 'Stages + National Curriculum' },
   { id: 'l5', day: 'Thursday', time: '13:00', duration: 45, school: 'Greenfield Primary', year: 'Year 4', className: 'PE group', coach: 'Lewis', name: 'School PE Class', programme: 'School PE', groupTemplateId: 'pe-fund', mode: 'Stages + National Curriculum' },
-  { id: 'l6', day: 'Thursday', time: '15:30', duration: 45, school: 'Gymnastics', year: 'After-school club', className: 'Beginners', coach: 'Lewis', name: 'Gymnastics Beginners', programme: 'Gymnastics', groupTemplateId: 'gym-beg', mode: 'Stages + National Curriculum' }
+  { id: 'l6', day: 'Thursday', time: '15:30', duration: 45, school: 'Gymnastics', year: 'After-school club', className: 'Beginners', coach: 'Lewis', name: 'Gymnastics Beginners', programme: 'Gymnastics', groupTemplateId: 'gym-beg', mode: 'Stages + National Curriculum' },
+  { id: 'l7', day: 'Wednesday', time: '11:00', duration: 30, school: 'Stage Flow Demo Pool', year: 'Example group', className: 'Demo', coach: 'Lewis', name: 'Demo Water Confidence Group', programme: 'School Swimming', groupTemplateId: 'demo-water', mode: 'Stages + National Curriculum' }
 ];
 
 export const demoLearners = [
@@ -306,5 +324,10 @@ export const demoLearners = [
   { id: 'p2', lesson: 'l1', name: 'Mia Jones', stage: 'Stage 2', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
   { id: 'p3', lesson: 'l4', name: '1:1 Example Swimmer', stage: 'Stage 3', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
   { id: 'p4', lesson: 'l5', name: 'PE Example Learner', stage: 'PE Fundamentals', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
-  { id: 'p5', lesson: 'l6', name: 'Gymnastics Example Learner', stage: 'Gymnastics Beginner', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} }
+  { id: 'p5', lesson: 'l6', name: 'Gymnastics Example Learner', stage: 'Gymnastics Beginner', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
+  { id: 'demo-p1', lesson: 'l7', name: 'Ava Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
+  { id: 'demo-p2', lesson: 'l7', name: 'Noah Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
+  { id: 'demo-p3', lesson: 'l7', name: 'Mia Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
+  { id: 'demo-p4', lesson: 'l7', name: 'Leo Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
+  { id: 'demo-p5', lesson: 'l7', name: 'Sofia Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' }
 ];
