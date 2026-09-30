@@ -256,7 +256,7 @@ function App() {
       {activeStaff?.role === 'Admin' ? <button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset</button> : coachOnly ? <button className='btn' onClick={() => { clearCoachSessionStaffId(); location.reload(); }}>Lock</button> : null}
     </div>
     <div className='wrap'>
-      <nav className='rail'>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list' })}>{screen[0].toUpperCase()}</button>)}</nav>
+      <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list' })}>{screen[0].toUpperCase()}</button>)}</nav>
       <main>
         {state.screen === 'home' && (coachOnly ? <CoachHome state={state} update={update} staff={activeStaff} /> : <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />)}
         {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
