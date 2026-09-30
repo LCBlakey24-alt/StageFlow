@@ -213,6 +213,18 @@ function completionText(state, lesson, learner) {
   const passed = criteria.filter(c => learner?.res?.[c] === 'pass').length;
   return `${passed}/${criteria.length} criteria passed`;
 }
+
+function isMarkedAssessment(value) {
+  return value === 'float' || value === 'pass';
+}
+
+function childAssessmentSummary(criteria, learner) {
+  if (!criteria.length) return 'National Curriculum only';
+  const marked = criteria.filter(skill => isMarkedAssessment(learner?.res?.[skill])).length;
+  const passed = criteria.filter(skill => learner?.res?.[skill] === 'pass').length;
+  if (!marked) return 'Not marked yet';
+  return `${marked}/${criteria.length} marked · ${passed} passed`;
+}
 function createLearnersFromText(text, lessonId, groupStage) {
   return (text || '').split('\n').map(x => x.trim()).filter(Boolean).map((name, index) => ({
     id: 'p' + Date.now() + index,
@@ -661,7 +673,7 @@ function Assess({ state, update, lesson }) {
       <div className='assessment-picker-head'><h2>Choose a child</h2><span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span></div>
       <div className='assessment-list'>
         {kids.map(child => <button className='assessment-list-button' key={child.id} onClick={() => openChild(child)}>
-          <span><strong>{child.name}</strong><small>{completionText(state, lesson, child)}</small></span>
+          <span><strong>{child.name}</strong><small>{childAssessmentSummary(criteria, child)}</small></span>
           <b>›</b>
         </button>)}
       </div>
@@ -669,7 +681,7 @@ function Assess({ state, update, lesson }) {
 
     {individualDetail && <section className='card assessment-card'>
       <button className='assessment-back' onClick={() => setDetailView('list')}>‹ Back to children</button>
-      <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{completionText(state, lesson, selected)}</p></div></div>
+      <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{childAssessmentSummary(criteria, selected)}</p></div></div>
       {lesson.mode !== 'National Curriculum only' && <>
         <div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div>
         <p className='muted'>Higher distances also mark matching lower-distance skills.</p>
@@ -683,9 +695,9 @@ function Assess({ state, update, lesson }) {
       <div className='assessment-picker-head'><h2>Choose a skill</h2><span className='pill'>{criteria.length} skill{criteria.length === 1 ? '' : 's'}</span></div>
       {criteria.length ? <div className='assessment-list'>
         {criteria.map(skill => {
-          const assessed = kids.filter(child => !!child.res?.[skill]).length;
+          const assessed = kids.filter(child => isMarkedAssessment(child.res?.[skill])).length;
           return <button className='assessment-list-button' key={skill} onClick={() => openSkill(skill)}>
-            <span><strong>{skill}</strong><small>{assessed}/{kids.length} assessed</small></span>
+            <span><strong>{skill}</strong><small>{assessed ? `${assessed}/${kids.length} marked` : 'Not marked yet'}</small></span>
             <b>›</b>
           </button>;
         })}
