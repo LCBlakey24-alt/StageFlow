@@ -335,13 +335,17 @@ function CoachPinGate({ state, onUnlock }) {
   function tryUnlock(nextDigits) {
     const code = nextDigits.join('');
     if (code.length !== 5) return;
-    const staff = (state.staff || []).find(person => String(person.accessCode || '') === code);
-    if (!staff) {
+    const matches = (state.staff || []).filter(person => String(person.accessCode || '') === code);
+    if (!matches.length) {
       setError('Code not recognised');
       return;
     }
+    if (matches.length > 1) {
+      setError('This code is duplicated — ask an admin for a new code');
+      return;
+    }
     setError('');
-    onUnlock(staff.id);
+    onUnlock(matches[0].id);
   }
 
   function setDigit(index, raw, input) {
@@ -845,8 +849,11 @@ function Permissions({ state, update }) {
   return <section className='card'>
     <h2>Staff access</h2>
     <div className='staff-access-list'>
-      {state.staff.map(staff => <div className='card staff-access-card' key={staff.id}>
-        <div className='staff-access-head'><div><h3>{staff.name}</h3><p className='muted'>{staff.role}</p></div></div>
+      {state.staff.map(staff => {
+        const code = String(staff.accessCode || '');
+        const duplicate = code.length === 5 && state.staff.some(person => person.id !== staff.id && String(person.accessCode || '') === code);
+        return <div className={'card staff-access-card' + (duplicate ? ' code-warning' : '')} key={staff.id}>
+        <div className='staff-access-head'><div><h3>{staff.name}</h3><p className='muted'>{staff.role}</p></div>{duplicate && <span className='pill warning-pill'>Duplicate code</span>}</div>
         <div className='staff-code-row'>
           <label>5-digit coach code</label>
           <div>
@@ -865,8 +872,10 @@ function Permissions({ state, update }) {
         <div className='staff-permission-list'>
           {['sessions', 'groups', 'learners', 'assess', 'export', 'framework', 'certificates'].map(key => <label className='pill' key={key}><input type='checkbox' checked={!!staff[key]} onChange={e => patchStaff(staff.id, { [key]: e.target.checked })} /> {key}</label>)}
         </div>
-      </div>)}
+      </div>;
+      })}
     </div>
+    <p className='muted staff-code-note'>Coach codes are for the current demo flow. Proper staff authentication will replace them before real pupil data is used.</p>
   </section>;
 }
 
