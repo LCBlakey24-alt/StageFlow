@@ -492,22 +492,160 @@ function CoachWeek({ state, update, staff }) {
   </div>;
 }
 
-function AdminTimetable({ state, update }) {
-  const day = state.currentDay || 'Tuesday';
-  const sorted = visibleLessonsForDay(state, day).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+function SessionSetupWizard({ state, update, initialDay, onClose }) {
+  const [step, setStep] = useState(0);
+  const [day, setDay] = useState(initialDay || 'Monday');
+  const [programme, setProgramme] = useState('School Swimming');
+  const [groupId, setGroupId] = useState(() => defaultGroupForProgramme('School Swimming', groups(state)));
+  const [count, setCount] = useState(1);
+  const [startTime, setStartTime] = useState('09:00');
+  const [duration, setDuration] = useState(30);
+  const [gap, setGap] = useState(0);
+  const [times, setTimes] = useState(['09:00']);
+  const [coach, setCoach] = useState('');
+  const [venue, setVenue] = useState(defaultSchoolForProgramme('School Swimming'));
 
-  function newLesson() {
-    const selectedProgramme = state.timetableFilter && state.timetableFilter !== 'All' ? normaliseProgrammeName(state.timetableFilter) : 'School Swimming';
-    const groupId = defaultGroupForProgramme(selectedProgramme, groups(state));
-    const id = 'l' + Date.now();
-    const lesson = { id, day, time: '09:00', duration: 30, school: defaultSchoolForProgramme(selectedProgramme), year: 'Year group', className: '', coach: '', name: defaultLessonNameForProgramme(selectedProgramme), programme: selectedProgramme, groupTemplateId: groupId, mode: 'Stages + National Curriculum' };
-    update({ lessons: [...state.lessons, lesson], active: id, step: 'edit', draft: null });
+  const programmeGroups = groups(state).filter(group => programmeForGroup(group) === programme || programmeForGroup(group) === 'Custom');
+  const selectedGroup = groups(state).find(group => group.id === groupId);
+  const staffOptions = [
+    { value: '', label: 'Unassigned' },
+    ...(state.staff || []).map(person => ({ value: person.name, label: `${person.name} · ${person.role}` }))
+  ];
+
+  useEffect(() => {
+    const generated = Array.from({ length: count }, (_, index) =>
+      addMinutes(startTime, index * (Number(duration) + Number(gap)))
+    );
+    setTimes(generated);
+  }, [count, startTime, duration, gap]);
+
+  function chooseProgramme(next) {
+    const normal = normaliseProgrammeName(next);
+    setProgramme(normal);
+    const nextGroup = defaultGroupForProgramme(normal, groups(state));
+    setGroupId(nextGroup);
+    setVenue(defaultSchoolForProgramme(normal));
   }
 
+  function patchTime(index, value) {
+    setTimes(current => current.map((time, i) => i === index ? value : time));
+  }
+
+  function createSessions() {
+    const now = Date.now();
+    const groupName = selectedGroup?.name || defaultLessonNameForProgramme(programme);
+    const newLessons = times.map((time, index) => ({
+      id: `l${now}-${index + 1}`,
+      day,
+      time,
+      duration: Number(duration) || 30,
+      school: venue || defaultSchoolForProgramme(programme),
+      year: 'Year group',
+      className: '',
+      coach,
+      name: count > 1 ? `${groupName} ${index + 1}` : groupName,
+      programme,
+      groupTemplateId: groupId,
+      mode: 'Stages + National Curriculum'
+    }));
+    update({
+      lessons: [...state.lessons, ...newLessons],
+      currentDay: day,
+      step: 'list',
+      active: '',
+      timetableFilter: programme,
+      audit: [...(state.audit || []), `Created ${newLessons.length} ${day} session${newLessons.length === 1 ? '' : 's'}`]
+    });
+    onClose();
+  }
+
+  const steps = ['Day', 'Lesson', 'Criteria', 'Sessions', 'Times', 'Review'];
+
+  return <section className='card session-wizard'>
+    <div className='session-wizard-top'>
+      <div><p className='muted'>Add sessions</p><h2>{steps[step]}</h2></div>
+      <button className='btn session-wizard-close' onClick={onClose}>Close</button>
+    </div>
+
+    <div className='session-wizard-steps'>
+      {steps.map((label, index) => <button
+        key={label}
+        className={(index === step ? 'on ' : '') + (index < step ? 'done' : '')}
+        onClick={() => index <= step && setStep(index)}
+      ><span>{index + 1}</span><b>{label}</b></button>)}
+    </div>
+
+    {step === 0 && <div className='wizard-choice-grid day-choice-grid'>
+      {days.map(option => <button key={option} className={'wizard-choice ' + (day === option ? 'on' : '')} onClick={() => setDay(option)}><strong>{option}</strong></button>)}
+    </div>}
+
+    {step === 1 && <div className='wizard-choice-grid'>
+      {programmes.filter(item => item !== 'Custom').map(option => <button key={option} className={'wizard-choice ' + (programme === option ? 'on' : '')} onClick={() => chooseProgramme(option)}><strong>{option}</strong></button>)}
+    </div>}
+
+    {step === 2 && <div className='wizard-choice-list'>
+      {(programmeGroups.length ? programmeGroups : groups(state)).map(group => <button key={group.id} className={'wizard-choice-row ' + (groupId === group.id ? 'on' : '')} onClick={() => setGroupId(group.id)}>
+        <span><strong>{group.name}</strong><small>{group.detail || (group.stages || []).join(', ')}</small></span><b>›</b>
+      </button>)}
+    </div>}
+
+    {step === 3 && <div>
+      <p className='wizard-question'>How many sessions happen on {day}?</p>
+      <div className='session-count-grid'>
+        {[1,2,3,4,5,6,7,8].map(number => <button key={number} className={count === number ? 'on' : ''} onClick={() => setCount(number)}>{number}</button>)}
+      </div>
+    </div>}
+
+    {step === 4 && <div className='wizard-schedule'>
+      <div className='grid2'>
+        <div className='field'><label>First session</label><input type='time' value={startTime} onChange={event => setStartTime(event.target.value)} /></div>
+        <Select label='Duration' value={String(duration)} onChange={value => setDuration(Number(value) || 30)} options={durations.map(value => ({ value: String(value), label: `${value} minutes` }))} />
+        <Select label='Gap between sessions' value={String(gap)} onChange={value => setGap(Number(value) || 0)} options={[0,5,10,15,20,30].map(value => ({ value: String(value), label: value ? `${value} minutes` : 'No gap' }))} />
+        <Select label='Coach' value={coach} onChange={setCoach} options={staffOptions} />
+      </div>
+      <Field label='School / venue' value={venue} onChange={setVenue} />
+      <div className='generated-times'>
+        <h3>Session times</h3>
+        {times.map((time, index) => <div className='generated-time-row' key={index}>
+          <span>Session {index + 1}</span>
+          <input type='time' value={time} onChange={event => patchTime(index, event.target.value)} />
+          <small>{duration} mins</small>
+        </div>)}
+      </div>
+    </div>}
+
+    {step === 5 && <div className='wizard-review'>
+      <div className='wizard-review-summary'>
+        <div><span>Day</span><strong>{day}</strong></div>
+        <div><span>Lesson</span><strong>{programme}</strong></div>
+        <div><span>Criteria</span><strong>{selectedGroup?.name || 'Not selected'}</strong></div>
+        <div><span>Coach</span><strong>{coach || 'Unassigned'}</strong></div>
+      </div>
+      <div className='wizard-review-list'>
+        {times.map((time, index) => <div key={index}><span>{time}</span><strong>{count > 1 ? `${selectedGroup?.name || defaultLessonNameForProgramme(programme)} ${index + 1}` : (selectedGroup?.name || defaultLessonNameForProgramme(programme))}</strong><small>{duration} mins · {venue}</small></div>)}
+      </div>
+    </div>}
+
+    <div className='session-wizard-footer'>
+      <button className='btn' disabled={step === 0} onClick={() => setStep(current => Math.max(0, current - 1))}>Back</button>
+      {step < steps.length - 1
+        ? <button className='btn org' disabled={(step === 2 && !groupId)} onClick={() => setStep(current => Math.min(steps.length - 1, current + 1))}>Continue</button>
+        : <button className='btn org' disabled={!groupId || !times.length} onClick={createSessions}>Create {count} session{count === 1 ? '' : 's'}</button>}
+    </div>
+  </section>;
+}
+
+function AdminTimetable({ state, update }) {
+  const day = state.currentDay || 'Tuesday';
+  const [adding, setAdding] = useState(false);
+  const sorted = visibleLessonsForDay(state, day).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+
+  if (adding) return <SessionSetupWizard state={state} update={update} initialDay={day} onClose={() => setAdding(false)} />;
+
   return <>
-    <section className='card calendar-toolbar'><div><h2>Admin sessions · {day}</h2><p className='muted'>Stable session manager</p></div><div><Select label='Programme filter' value={state.timetableFilter || 'All'} onChange={v => update({ timetableFilter: v })} options={programmeFilters.map(x => ({ value: x, label: x }))} /><button className='btn org' onClick={newLesson}>+ Add class/session</button></div></section>
+    <section className='card calendar-toolbar'><div><h2>Admin sessions · {day}</h2><p className='muted'>Choose a day, then open or add sessions.</p></div><button className='btn org' onClick={() => setAdding(true)}>+ Add sessions</button></section>
     <div className='tabs'>{days.map(d => <button key={d} className={day === d ? 'on' : ''} onClick={() => update({ currentDay: d })}>{d}</button>)}</div>
-    {sorted.length ? sorted.map(lesson => <LessonCard key={lesson.id} state={state} update={update} lesson={lesson} />) : <section className='card'><h2>No classes on {day}</h2><button className='btn org' onClick={newLesson}>+ Add class/session</button></section>}
+    {sorted.length ? sorted.map(lesson => <LessonCard key={lesson.id} state={state} update={update} lesson={lesson} />) : <section className='card empty-admin-day'><h2>No sessions on {day}</h2><button className='btn org' onClick={() => setAdding(true)}>+ Add sessions</button></section>}
   </>;
 }
 
