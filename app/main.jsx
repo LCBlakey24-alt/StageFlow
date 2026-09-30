@@ -545,6 +545,13 @@ function Lesson({ state, update, lesson }) {
 function LessonSetup({ state, update, lesson }) {
   const templateOptions = groupOptionsForLesson(state, lesson);
   const criteria = groupCriteria(state, lesson);
+  const staffOptions = [
+    { value: '', label: 'Unassigned' },
+    ...(state.staff || []).map(person => ({ value: person.name, label: `${person.name} · ${person.role}` }))
+  ];
+  if (lesson.coach && !staffOptions.some(option => option.value === lesson.coach)) {
+    staffOptions.push({ value: lesson.coach, label: `${lesson.coach} · Existing assignment` });
+  }
   function patchLesson(patch) {
     let changed = { ...lesson, ...patch };
     let learners = state.learners;
@@ -564,7 +571,7 @@ function LessonSetup({ state, update, lesson }) {
     update({ lessons: state.lessons.filter(l => l.id !== lesson.id), learners: state.learners.filter(p => p.lesson !== lesson.id), step: 'list', active: '' });
   }
   return <>
-    <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Field label='Coach' value={lesson.coach || ''} onChange={v => patchLesson({ coach: v })} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
+    <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Select label='Coach' value={lesson.coach || ''} onChange={v => patchLesson({ coach: v })} options={staffOptions} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
     <section className='card'><h2>Criteria preview</h2><p className='muted'>{groupLabel(state, lesson)}</p>{criteria.length ? criteria.map(c => <div className='folder' key={c}>• {c}</div>) : <p className='muted'>This session is National Curriculum only.</p>}</section>
     <div className='footer'><button className='btn' onClick={() => update({ step: 'list' })}>Back to timetable</button><button className='btn' onClick={deleteLesson}>Delete</button><button className='btn org' onClick={() => update({ step: 'register' })}>Register learners</button></div>
   </>;
