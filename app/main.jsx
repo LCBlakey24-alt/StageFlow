@@ -66,9 +66,8 @@ const starter = {
     { id: 'cert2', name: 'National Curriculum Certificate', rule: 'National Curriculum achieved', font: 'Sans Serif', size: 28, groupBy: 'Award' }
   ],
   staff: [
-    { id: 's1', name: 'Lewis', role: 'Lead Coach', accessCode: '13579', sessions: true, groups: true, learners: true, assess: true, export: false, framework: false, certificates: false },
-    { id: 's2', name: 'Sarah', role: 'Coach', accessCode: '24680', sessions: true, groups: false, learners: true, assess: true, export: false, framework: false, certificates: false },
-    { id: 's3', name: 'Admin User', role: 'Admin', accessCode: '80421', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
+    { id: 's1', name: 'Lewis', role: 'Coach', accessCode: '13579', sessions: true, groups: false, learners: true, assess: true, export: false, framework: false, certificates: false },
+    { id: 's2', name: 'Charlotte', role: 'Admin', accessCode: '80421', sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
   ],
   pack: { reports: true, certificates: true, registers: true, nc: true, support: true, raw: false, email: 'office@greenfieldprimary.co.uk', cc: 'manager@example.com', method: 'Secure download link' },
   audit: ['Core programme wording cleaned']
