@@ -614,6 +614,7 @@ function Assess({ state, update, lesson }) {
   const selected = kids.find(p => p.id === state.selected) || kids[0];
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
   const mode = state.assessmentMode || 'swimmer';
+  const showNationalCurriculum = lessonProgramme(lesson) === 'School Swimming';
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
   const [detailView, setDetailView] = useState('list');
@@ -687,8 +688,10 @@ function Assess({ state, update, lesson }) {
         <p className='muted'>Higher distances also mark matching lower-distance skills.</p>
         {criteria.map(skill => <SkillScore key={skill} criteria={skill} value={selected.res?.[skill]} onScore={v => scoreLearner(selected, skill, v)} />)}
       </>}
-      <h3>National Curriculum</h3>
-      {nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}
+      {showNationalCurriculum && <>
+        <h3>National Curriculum</h3>
+        {nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}
+      </>}
     </section>}
 
     {groupList && <section className='card assessment-picker'>
