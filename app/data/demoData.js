@@ -316,7 +316,7 @@ export const demoLessons = [
   { id: 'l4', day: 'Wednesday', time: '17:30', duration: 30, school: 'Evening Swim 1:1', year: '1:1 swimmer', className: 'All stages', coach: 'Lewis', name: 'Evening Swim 1:1', programme: 'Evening Swim 1:1', groupTemplateId: 'eg121', mode: 'Stages + National Curriculum' },
   { id: 'l5', day: 'Thursday', time: '13:00', duration: 45, school: 'Greenfield Primary', year: 'Year 4', className: 'PE group', coach: 'Lewis', name: 'School PE Class', programme: 'School PE', groupTemplateId: 'pe-fund', mode: 'Stages + National Curriculum' },
   { id: 'l6', day: 'Thursday', time: '15:30', duration: 45, school: 'Gymnastics', year: 'After-school club', className: 'Beginners', coach: 'Lewis', name: 'Gymnastics Beginners', programme: 'Gymnastics', groupTemplateId: 'gym-beg', mode: 'Stages + National Curriculum' },
-  { id: 'l7', day: 'Wednesday', time: '11:00', duration: 30, school: 'Stage Flow Demo Pool', year: 'Example group', className: 'Demo', coach: 'Lewis', name: 'Demo Water Confidence Group', programme: 'School Swimming', groupTemplateId: 'demo-water', mode: 'Stages + National Curriculum' }
+  { id: 'l7', day: 'Wednesday', time: '11:00', duration: 30, school: 'Stage Flow Demo Pool', year: 'Example group', className: 'Demo', coach: 'Lewis', name: 'Demo Water Confidence Group', programme: 'School Swimming', groupTemplateId: 'demo-water', mode: 'Stages only' }
 ];
 
 export const demoLearners = [
