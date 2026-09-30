@@ -933,16 +933,129 @@ function Groups({ state, update }) {
     return <div className='card' key={g.id}><Field label='Group name' value={g.name} onChange={v => edit(i, 'name', v)} /><Select label='Programme' value={groupProgramme} onChange={v => edit(i, 'programme', v)} options={programmes.map(x => ({ value: x, label: x }))} /><Field label='Group detail' value={g.detail || ''} onChange={v => edit(i, 'detail', v)} /><h3>Criteria sections included</h3><div>{stageOptions.map(stage => <label className='pill' key={stage}><input type='checkbox' checked={g.stages?.includes(stage)} onChange={e => { const next = e.target.checked ? [...(g.stages || []), stage] : (g.stages || []).filter(x => x !== stage); edit(i, 'stages', next); }} /> {stage}</label>)}</div><p className='muted'>{(g.stages || []).flatMap(stage => criteriaForStage(state, stage)).length} criteria in this group.</p></div>;
   })}</section>;
 }
-function Framework({ state, update }) {
-  function setCriteria(stage, text) {
-    update({ framework: { ...state.framework, criteria: { ...state.framework.criteria, [stage]: text.split('\n').map(x => x.trim()).filter(Boolean) } } });
-  }
-  function addStage() {
-    const name = 'New Criteria Section ' + (state.framework.stages.length + 1);
-    update({ framework: { ...state.framework, stages: [...state.framework.stages, name], criteria: { ...state.framework.criteria, [name]: [] } } });
-  }
-  return <section className='card'><h2>Criteria framework</h2><p className='muted'>These are the criteria sections that groups can use.</p><Field label='Framework name' value={state.framework.name} onChange={v => update({ framework: { ...state.framework, name: v } })} /><button className='btn org' onClick={addStage}>+ Add criteria section</button>{state.framework.stages.map(stage => <div className='card' key={stage}><h3>{stage}</h3><textarea value={(state.framework.criteria?.[stage] || []).join('\n')} onChange={e => setCriteria(stage, e.target.value)} /></div>)}</section>;
+function CriteriaSectionEditor({ stage, items, onSave }) {
+  const value = (items || []).join('\n');
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [stage, value]);
+
+  const lines = draft.split('\n').map(line => line.trim()).filter(Boolean);
+  const dirty = draft !== value;
+
+  return <section className='card admin-editor-card'>
+    <div className='admin-editor-head'>
+      <div><h3>{stage} Criteria</h3><p className='muted'>{lines.length} item{lines.length === 1 ? '' : 's'} · one criterion per line</p></div>
+      {dirty && <span className='pill'>Unsaved</span>}
+    </div>
+    <textarea
+      className='admin-big-textarea'
+      rows={Math.max(7, Math.min(14, lines.length + 3))}
+      value={draft}
+      onChange={event => setDraft(event.target.value)}
+      placeholder={'Enter the water safely\nBlow bubbles\nFloat on front\nClimb out safely'}
+    />
+    <div className='admin-editor-actions'>
+      <span className='muted'>Press Enter for a new criterion.</span>
+      <button className='btn org' disabled={!dirty} onClick={() => onSave(lines)}>Save criteria</button>
+    </div>
+  </section>;
 }
+
+function PassMarksEditor({ marks, onSave }) {
+  const value = (marks || []).join('\n');
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const lines = draft.split('\n').map(line => line.trim()).filter(Boolean);
+  const dirty = draft !== value;
+
+  function save() {
+    if (lines.length < 2) {
+      setError('Add at least two levels: a lowest result and a passed result.');
+      return;
+    }
+    setError('');
+    onSave(lines);
+  }
+
+  return <section className='card admin-editor-card pass-mark-editor'>
+    <div className='admin-editor-head'>
+      <div><h3>Assessment marks</h3><p className='muted'>Top line = lowest result · bottom line = achieved/passed</p></div>
+      {dirty && <span className='pill'>Unsaved</span>}
+    </div>
+    <textarea
+      className='admin-big-textarea pass-mark-textarea'
+      rows={6}
+      value={draft}
+      onChange={event => { setDraft(event.target.value); setError(''); }}
+      placeholder={'Needs practice\nClose\nAlmost there\nPassed'}
+    />
+    {lines.length > 0 && <div className='pass-mark-preview'>
+      {lines.map((label, index) => <span className={'pass-mark-chip ' + (index === lines.length - 1 ? 'passed' : '')} key={index}>{label}</span>)}
+    </div>}
+    {error && <p className='admin-editor-error'>{error}</p>}
+    <div className='admin-editor-actions'>
+      <span className='muted'>Each line becomes one assessment button.</span>
+      <button className='btn org' disabled={!dirty} onClick={save}>Save marks</button>
+    </div>
+  </section>;
+}
+
+function Framework({ state, update }) {
+  function saveCriteria(stage, items) {
+    update({
+      framework: {
+        ...state.framework,
+        criteria: { ...state.framework.criteria, [stage]: items }
+      },
+      audit: [...(state.audit || []), `Updated ${stage} criteria`]
+    });
+  }
+
+  function savePassMarks(passMarks) {
+    update({
+      framework: { ...state.framework, passMarks },
+      audit: [...(state.audit || []), 'Updated assessment marks']
+    });
+  }
+
+  function addStage() {
+    const nextNumber = state.framework.stages.length + 1;
+    const name = window.prompt('Name this criteria section', `New Criteria Section ${nextNumber}`);
+    const clean = String(name || '').trim();
+    if (!clean || state.framework.stages.includes(clean)) return;
+    update({
+      framework: {
+        ...state.framework,
+        stages: [...state.framework.stages, clean],
+        criteria: { ...state.framework.criteria, [clean]: [] }
+      }
+    });
+  }
+
+  const passMarks = Array.isArray(state.framework.passMarks) && state.framework.passMarks.length >= 2
+    ? state.framework.passMarks
+    : ['Needs practice', 'Almost there', 'Passed'];
+
+  return <section className='card admin-framework'>
+    <div className='admin-framework-head'>
+      <div><h2>Criteria & assessment</h2><p className='muted'>Simple line-by-line editing for what coaches assess.</p></div>
+      <button className='btn org' onClick={addStage}>+ Add section</button>
+    </div>
+    <PassMarksEditor marks={passMarks} onSave={savePassMarks} />
+    <div className='admin-section-divider'><h2>Criteria sections</h2><p className='muted'>Each non-empty line is saved as one criterion.</p></div>
+    <div className='admin-criteria-list'>
+      {state.framework.stages.map(stage => <CriteriaSectionEditor key={stage} stage={stage} items={state.framework.criteria?.[stage] || []} onSave={items => saveCriteria(stage, items)} />)}
+    </div>
+  </section>;
+}
+
 function Certificates({ state, update }) {
   function addCert() {
     update({ certificates: [...state.certificates, { id: 'cert' + Date.now(), name: 'New Certificate Template', rule: 'Criteria group complete', font: 'Serif', size: 32, groupBy: 'Criteria group' }] });
