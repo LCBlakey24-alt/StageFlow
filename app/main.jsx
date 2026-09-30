@@ -249,7 +249,8 @@ function createLearnersFromText(text, lessonId, groupStage) {
     att: 'Present',
     res: {},
     dist: { front: '0m', back: '0m' },
-    nc: {}
+    nc: {},
+    notes: []
   }));
 }
 
@@ -500,7 +501,6 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
   const [startTime, setStartTime] = useState('09:00');
   const [duration, setDuration] = useState(30);
   const [gap, setGap] = useState(0);
-  const [coach, setCoach] = useState('');
   const [venue, setVenue] = useState(defaultSchoolForProgramme('School Swimming'));
 
   function typeLabel(value) {
@@ -522,7 +522,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
 
   const stageOptions = availableStagesFor(programme);
   const defaultStage = stageOptions[0] || '';
-  const [sessions, setSessions] = useState([{ time: '09:00', stage: defaultStage }]);
+  const [sessions, setSessions] = useState([{ time: '09:00', stage: defaultStage, coach: '' }]);
 
   const staffOptions = [
     { value: '', label: 'Unassigned' },
@@ -532,7 +532,8 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
   useEffect(() => {
     const generated = Array.from({ length: count }, (_, index) => ({
       time: addMinutes(startTime, index * (Number(duration) + Number(gap))),
-      stage: sessions[index]?.stage || defaultStage
+      stage: sessions[index]?.stage || defaultStage,
+      coach: sessions[index]?.coach || ''
     }));
     setSessions(generated);
   }, [count, startTime, duration, gap]);
@@ -592,7 +593,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
         school: venue || defaultSchoolForProgramme(programme),
         year: 'Year group',
         className: '',
-        coach,
+        coach: session.coach || '',
         name: count > 1 ? `${label} · Session ${index + 1}` : label,
         programme,
         groupTemplateId: groupId,
@@ -652,8 +653,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     </div>}
 
     {step === 2 && <div className='wizard-stage-assignments'>
-      <div className='grid2 wizard-shared-fields'>
-        <Select label='Coach' value={coach} onChange={setCoach} options={staffOptions} />
+      <div className='wizard-shared-fields'>
         <Field label='School / venue' value={venue} onChange={setVenue} />
       </div>
       <p className='wizard-question'>What is each session working on?</p>
@@ -667,6 +667,12 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
             <label>Stage / criteria</label>
             <select value={session.stage || ''} onChange={event => patchSession(index, { stage: event.target.value })}>
               {stageOptions.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+            </select>
+          </div>
+          <div className='field'>
+            <label>Coach</label>
+            <select value={session.coach || ''} onChange={event => patchSession(index, { coach: event.target.value })}>
+              {staffOptions.map(option => <option key={option.value || 'unassigned'} value={option.value}>{option.label}</option>)}
             </select>
           </div>
         </div>)}
@@ -775,9 +781,73 @@ function LessonSetup({ state, update, lesson }) {
   </>;
 }
 
+function LearnerNotesPanel({ state, update, learner, canEdit, onClose }) {
+  const [draft, setDraft] = useState('');
+  const [source, setSource] = useState('Parent / carer');
+  const notes = Array.isArray(learner.notes) ? learner.notes : [];
+  const staff = coachSessionStaff(state);
+
+  function addNote() {
+    const text = draft.trim();
+    if (!text) return;
+    const note = {
+      id: `note-${Date.now()}`,
+      text,
+      source,
+      author: staff?.name || 'Admin',
+      createdAt: new Date().toISOString()
+    };
+    update({
+      learners: state.learners.map(item => item.id === learner.id
+        ? { ...item, notes: [...(Array.isArray(item.notes) ? item.notes : []), note] }
+        : item)
+    });
+    setDraft('');
+  }
+
+  function removeNote(noteId) {
+    update({
+      learners: state.learners.map(item => item.id === learner.id
+        ? { ...item, notes: (Array.isArray(item.notes) ? item.notes : []).filter(note => note.id !== noteId) }
+        : item)
+    });
+  }
+
+  return <section className='learner-notes-panel'>
+    <div className='learner-notes-head'>
+      <div><h3>{learner.name} · Notes</h3><p className='muted'>{notes.length ? `${notes.length} note${notes.length === 1 ? '' : 's'}` : 'No notes yet'}</p></div>
+      <button className='notes-close' onClick={onClose}>Close</button>
+    </div>
+
+    {notes.length > 0 && <div className='learner-notes-list'>
+      {notes.map(note => <article className='learner-note' key={note.id}>
+        <div><strong>{note.source || 'Note'}</strong><span>{note.createdAt ? new Date(note.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}</span></div>
+        <p>{note.text}</p>
+        <footer><span>{note.author || 'Stage Flow'}</span>{canEdit && <button onClick={() => removeNote(note.id)}>Remove</button>}</footer>
+      </article>)}
+    </div>}
+
+    {canEdit && <div className='learner-note-compose'>
+      <div className='field'>
+        <label>Note from</label>
+        <select value={source} onChange={event => setSource(event.target.value)}>
+          <option>Parent / carer</option>
+          <option>Admin</option>
+          <option>School</option>
+          <option>Coach</option>
+        </select>
+      </div>
+      <textarea value={draft} onChange={event => setDraft(event.target.value)} placeholder='Add the note the coach needs to see…' />
+      <button className='btn org' disabled={!draft.trim()} onClick={addNote}>Add note</button>
+      <p className='note-demo-warning'>Demo/local notes only — do not enter real medical, safeguarding or identifiable child information yet.</p>
+    </div>}
+  </section>;
+}
+
 function Register({ state, update, lesson }) {
   const kids = state.learners.filter(p => p.lesson === lesson.id);
   const [names, setNames] = useState('');
+  const [openNotes, setOpenNotes] = useState('');
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
 
@@ -800,16 +870,28 @@ function Register({ state, update, lesson }) {
     <section className='card register-card'>
       <div className='register-head'><h2>Register</h2><span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span></div>
       <div className='register-list'>
-        {kids.map(p => <div className='register-person' key={p.id}>
-          <div className='register-person-main'>
-            <b>{p.name}</b>
-            <small>{completionText(state, lesson, p)}</small>
-          </div>
-          <select className={'attendance-select ' + (p.att === 'Absent' ? 'absent' : '')} value={p.att || 'Present'} onChange={e => changeLearner(p.id, { att: e.target.value })} aria-label={`${p.name} attendance`}>
-            {attendanceOptions.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
-          {!coachOnly && <button className='register-remove' onClick={() => removeLearner(p.id)}>Remove</button>}
-        </div>)}
+        {kids.map(p => {
+          const noteCount = Array.isArray(p.notes) ? p.notes.length : 0;
+          const showNoteButton = noteCount > 0 || !coachOnly;
+          return <div className='register-person-wrap' key={p.id}>
+            <div className='register-person'>
+              <div className='register-person-main'>
+                <b>{p.name}</b>
+                <small>{completionText(state, lesson, p)}</small>
+              </div>
+              {showNoteButton && <button
+                className={'learner-note-button ' + (noteCount ? 'has-notes' : '')}
+                onClick={() => setOpenNotes(openNotes === p.id ? '' : p.id)}
+                aria-label={noteCount ? `${noteCount} notes for ${p.name}` : `Add note for ${p.name}`}
+              ><span>📝</span>{noteCount > 0 ? <b>{noteCount}</b> : <b>+</b>}</button>}
+              <select className={'attendance-select ' + (p.att === 'Absent' ? 'absent' : '')} value={p.att || 'Present'} onChange={e => changeLearner(p.id, { att: e.target.value })} aria-label={`${p.name} attendance`}>
+                {attendanceOptions.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+              {!coachOnly && <button className='register-remove' onClick={() => removeLearner(p.id)}>Remove</button>}
+            </div>
+            {openNotes === p.id && <LearnerNotesPanel state={state} update={update} learner={p} canEdit={!coachOnly} onClose={() => setOpenNotes('')} />}
+          </div>;
+        })}
       </div>
     </section>
     {!coachOnly && <section className='card'><h2>Add learners</h2><p className='muted'>One name per line.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names</button></section>}
