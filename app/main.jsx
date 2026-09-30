@@ -33,9 +33,24 @@ function coachSessionStaff(state) {
 const durations = [15, 30, 45, 60, 75, 90, 105, 120];
 const modes = ['Stages + National Curriculum', 'Stages only', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
-const scores = ['no', 'float', 'pass'];
-const scoreLabels = { no: 'Not assessed', float: 'Almost there', pass: 'Passed' };
-const scoreButtonLabels = { no: 'Not assessed', float: 'Almost', pass: 'Passed' };
+const legacyScores = ['no', 'float', 'pass'];
+
+function assessmentOptions(state) {
+  const labels = Array.isArray(state.framework?.passMarks) && state.framework.passMarks.length >= 2
+    ? state.framework.passMarks
+    : ['Needs practice', 'Almost there', 'Passed'];
+  return labels.map((label, index) => ({
+    value: index === labels.length - 1 ? 'pass' : `mark-${index}`,
+    label
+  }));
+}
+
+function resultMatchesOption(value, option, index, options) {
+  if (value === option.value) return true;
+  // Keep older demo results readable after the configurable scale upgrade.
+  if (value === 'float' && index === Math.max(0, options.length - 2)) return true;
+  return false;
+}
 const distances = ['0m', '5m', '10m', '15m', '20m', '25m', '50m', '100m'];
 const defaultProgrammes = ['School Swimming', 'Evening Swim 1:1', 'Evening Swim Group', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'];
 const programmes = programmeAreas?.length ? programmeAreas : defaultProgrammes;
@@ -215,7 +230,7 @@ function completionText(state, lesson, learner) {
 }
 
 function isMarkedAssessment(value) {
-  return value === 'float' || value === 'pass';
+  return value === 'float' || value === 'pass' || String(value || '').startsWith('mark-');
 }
 
 function childAssessmentSummary(criteria, learner) {
@@ -623,6 +638,7 @@ function Assess({ state, update, lesson }) {
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
   const mode = state.assessmentMode || 'swimmer';
   const showNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
+  const scoreOptions = assessmentOptions(state);
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
   const [detailView, setDetailView] = useState('list');
@@ -698,7 +714,7 @@ function Assess({ state, update, lesson }) {
       {lesson.mode !== 'National Curriculum only' && <>
         <div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div>
         <p className='muted'>Higher distances also mark matching lower-distance skills.</p>
-        {criteria.map(skill => <SkillScore key={skill} criteria={skill} value={selected.res?.[skill]} onScore={v => scoreLearner(selected, skill, v)} />)}
+        {criteria.map(skill => <SkillScore key={skill} criteria={skill} value={selected.res?.[skill]} options={scoreOptions} onScore={v => scoreLearner(selected, skill, v)} />)}
       </>}
       {showNationalCurriculum && <>
         <h3>National Curriculum</h3>
@@ -732,7 +748,7 @@ function Assess({ state, update, lesson }) {
       <div className='skill-list'>
         {kids.map(child => <div className='skill-row' key={child.id}>
           <div><h3>{child.name}</h3></div>
-          <div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (child.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(child, selectedSkill, v)}>{scoreButtonLabels[v]}</button>)}</div>
+          <div className='score-buttons'>{scoreOptions.map((option, index) => <button className={'score-btn ' + (resultMatchesOption(child.res?.[selectedSkill], option, index, scoreOptions) ? 'on' : '')} key={option.value} onClick={() => scoreLearner(child, selectedSkill, option.value)}>{option.label}</button>)}</div>
         </div>)}
       </div>
     </section>}
@@ -836,8 +852,8 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
   </section>;
 }
 
-function SkillScore({ criteria, value, onScore }) {
-  return <div className='criteria skill-card'><b>{criteria}</b><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (value === v ? 'on' : '')} key={v} onClick={() => onScore(v)}>{scoreButtonLabels[v]}</button>)}</div></div>;
+function SkillScore({ criteria, value, options, onScore }) {
+  return <div className='criteria skill-card'><b>{criteria}</b><div className='score-buttons'>{options.map((option, index) => <button className={'score-btn ' + (resultMatchesOption(value, option, index, options) ? 'on' : '')} key={option.value} onClick={() => onScore(option.value)}>{option.label}</button>)}</div></div>;
 }
 
 function SaveLesson({ state, update, lesson }) {
