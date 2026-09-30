@@ -34,6 +34,7 @@ const modes = ['Stages + National Curriculum', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
 const scores = ['no', 'float', 'pass'];
 const scoreLabels = { no: 'Not assessed', float: 'Almost there', pass: 'Passed' };
+const scoreButtonLabels = { no: 'Not assessed', float: 'Almost', pass: 'Passed' };
 const distances = ['0m', '5m', '10m', '15m', '20m', '25m', '50m', '100m'];
 const defaultProgrammes = ['School Swimming', 'Evening Swim 1:1', 'Evening Swim Group', 'Private Lessons', 'School PE', 'Gymnastics', 'Custom'];
 const programmes = programmeAreas?.length ? programmeAreas : defaultProgrammes;
@@ -599,6 +600,7 @@ function Assess({ state, update, lesson }) {
   const kids = state.learners.filter(p => p.lesson === lesson.id && p.att !== 'Absent');
   const criteria = groupCriteria(state, lesson);
   const selected = kids.find(p => p.id === state.selected) || kids[0];
+  const selectedIndex = Math.max(0, kids.findIndex(p => p.id === selected?.id));
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
   const mode = state.assessmentMode || 'swimmer';
   const staff = coachSessionStaff(state);
@@ -617,19 +619,25 @@ function Assess({ state, update, lesson }) {
       res: applyDistanceAutoPass(state, learner.res, stroke, metres)
     });
   }
+
+  function moveChild(offset) {
+    if (!kids.length) return;
+    const nextIndex = Math.max(0, Math.min(kids.length - 1, selectedIndex + offset));
+    update({ selected: kids[nextIndex].id });
+  }
   if (!kids.length) {
     return <><section className='card'><h2>No learners to assess</h2><p className='muted'>Mark learners as present on the register first.</p></section><div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back to register</button></div></>;
   }
   return <>
     <section className='card assessment-choice'><div className='assessment-mode-head'><h2>Assess</h2><div className='assess-mode-grid'>{assessmentModes.map(item => <button key={item.id} className={'assess-mode ' + (mode === item.id ? 'on' : '')} onClick={() => update({ assessmentMode: item.id, selectedSkill })}><strong>{item.title}</strong></button>)}</div></div></section>
-    {mode === 'swimmer' && selected && <div className='grid2 assessment-layout'><section className='card learner-rail'><h2>Children</h2>{kids.map(p => <button className={'learner-button ' + (p.id === selected.id ? 'on' : '')} key={p.id} onClick={() => update({ selected: p.id })}><span>{p.name}</span><small>{completionText(state, lesson, p)}</small></button>)}</section><section className='card assessment-card'><div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{completionText(state, lesson, selected)}</p></div></div>{lesson.mode !== 'National Curriculum only' && <><div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div><p className='muted'>Higher distances also mark matching lower-distance skills.</p>{criteria.map(c => <SkillScore key={c} criteria={c} value={selected.res?.[c]} onScore={v => scoreLearner(selected, c, v)} />)}</>}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}</section></div>}
-    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head'><div><h2>Choose a skill</h2></div></div>{criteria.length ? <><Select label='Skill' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={criteria.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => <div className='skill-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{completionText(state, lesson, p)}</p></div><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreLabels[v]}</button>)}</div></div>)}</div></> : <p className='muted'>This session is National Curriculum only, so there are no group skills to assess here.</p>}</section>}
+    {mode === 'swimmer' && selected && <div className='grid2 assessment-layout'><section className='card learner-rail'><h2>Children</h2>{kids.map(p => <button className={'learner-button ' + (p.id === selected.id ? 'on' : '')} key={p.id} onClick={() => update({ selected: p.id })}><span>{p.name}</span><small>{completionText(state, lesson, p)}</small></button>)}</section><section className='card assessment-card'><div className='assessment-head child-assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{completionText(state, lesson, selected)}</p></div><div className='child-stepper'><span>{selectedIndex + 1} of {kids.length}</span><div><button className='child-step-btn' disabled={selectedIndex === 0} onClick={() => moveChild(-1)} aria-label='Previous child'>‹</button><button className='child-step-btn' disabled={selectedIndex === kids.length - 1} onClick={() => moveChild(1)} aria-label='Next child'>›</button></div></div></div>{lesson.mode !== 'National Curriculum only' && <><div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div><p className='muted'>Higher distances also mark matching lower-distance skills.</p>{criteria.map(c => <SkillScore key={c} criteria={c} value={selected.res?.[c]} onScore={v => scoreLearner(selected, c, v)} />)}</>}<h3>National Curriculum</h3>{nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}</section></div>}
+    {mode === 'skill' && <section className='card skill-assessment'><div className='assessment-head'><div><h2>Choose a skill</h2></div></div>{criteria.length ? <><Select label='Skill' value={selectedSkill} onChange={v => update({ selectedSkill: v })} options={criteria.map(x => ({ value: x, label: x }))} /><div className='skill-list'>{kids.map(p => <div className='skill-row' key={p.id}><div><h3>{p.name}</h3><p className='muted'>{completionText(state, lesson, p)}</p></div><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (p.res?.[selectedSkill] === v ? 'on' : '')} key={v} onClick={() => scoreLearner(p, selectedSkill, v)}>{scoreButtonLabels[v]}</button>)}</div></div>)}</div></> : <p className='muted'>This session is National Curriculum only, so there are no group skills to assess here.</p>}</section>}
     <div className='footer'><button className='btn' onClick={() => update({ step: 'register' })}>Back</button>{coachOnly ? <button className='btn org' onClick={() => update({ lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item), step: 'list', active: '' })}>Save & finish</button> : <button className='btn org' onClick={() => update({ step: 'save' })}>Save session</button>}</div>
   </>;
 }
 
 function SkillScore({ criteria, value, onScore }) {
-  return <div className='criteria skill-card'><b>{criteria}</b><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (value === v ? 'on' : '')} key={v} onClick={() => onScore(v)}>{scoreLabels[v]}</button>)}</div></div>;
+  return <div className='criteria skill-card'><b>{criteria}</b><div className='score-buttons'>{scores.map(v => <button className={'score-btn ' + (value === v ? 'on' : '')} key={v} onClick={() => onScore(v)}>{scoreButtonLabels[v]}</button>)}</div></div>;
 }
 
 function SaveLesson({ state, update, lesson }) {
