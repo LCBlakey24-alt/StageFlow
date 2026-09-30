@@ -359,6 +359,7 @@ function App() {
 }
 
 function InstallStageFlowCard({ update }) {
+  const CANONICAL_INSTALL_URL = 'https://stage-flow-three.vercel.app/';
   const [installPrompt, setInstallPrompt] = useState(null);
   const [installed, setInstalled] = useState(() => isStandaloneStageFlow());
   const [showHelp, setShowHelp] = useState(false);
@@ -382,9 +383,27 @@ function InstallStageFlowCard({ update }) {
     };
   }, []);
 
+  const isAppleMobile = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '') ||
+    (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+  const isAndroid = /android/i.test(window.navigator.userAgent || '');
+  const onCanonicalHost = window.location.hostname === 'stage-flow-three.vercel.app';
+
+  function openInstallBrowser() {
+    if (isAndroid) {
+      const fallback = encodeURIComponent(CANONICAL_INSTALL_URL);
+      window.location.href = `intent://stage-flow-three.vercel.app/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+      return;
+    }
+    window.open(CANONICAL_INSTALL_URL, '_blank', 'noopener,noreferrer');
+  }
+
   async function install() {
     if (installed) {
       update({ screen: 'timetable', step: 'list', active: '' });
+      return;
+    }
+    if (!onCanonicalHost) {
+      openInstallBrowser();
       return;
     }
     if (!installPrompt) {
@@ -400,9 +419,6 @@ function InstallStageFlowCard({ update }) {
     }
   }
 
-  const isAppleMobile = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '') ||
-    (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
-
   return <section className='card install-stageflow-card'>
     <div className='install-stageflow-copy'>
       <span className='install-app-mark'>SF</span>
@@ -411,15 +427,19 @@ function InstallStageFlowCard({ update }) {
         <h2>{installed ? 'Stage Flow is on this device' : 'Install Stage Flow'}</h2>
         <p className='muted'>{installed
           ? 'Open staff access whenever you are ready.'
-          : 'Add Stage Flow to your home screen. The app icon opens directly to staff access.'}</p>
+          : onCanonicalHost
+            ? 'Install Stage Flow on this device. The app icon opens directly to staff access.'
+            : 'Open the permanent Stage Flow site in your browser first, then install it to your home screen.'}</p>
       </div>
     </div>
-    <button className='btn org install-stageflow-button' onClick={install}>{installed ? 'Open staff access' : 'Install app'}</button>
+    <button className='btn org install-stageflow-button' onClick={install}>
+      {installed ? 'Open staff access' : onCanonicalHost ? 'Install app' : 'Open in Chrome to install'}
+    </button>
     {showHelp && <div className='install-help'>
-      <strong>{isAppleMobile ? 'On iPhone or iPad' : 'Install from your browser'}</strong>
+      <strong>{isAppleMobile ? 'On iPhone or iPad' : 'Install from this browser'}</strong>
       <p>{isAppleMobile
-        ? 'Open this page in Safari, tap Share, then choose Add to Home Screen.'
-        : 'Open your browser menu and choose Install app or Add to Home screen.'}</p>
+        ? 'In Safari, tap Share, then choose Add to Home Screen.'
+        : 'Open the browser menu and choose Install app or Add to Home screen.'}</p>
     </div>}
   </section>;
 }
