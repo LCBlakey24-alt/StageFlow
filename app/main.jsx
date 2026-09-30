@@ -247,13 +247,18 @@ function App() {
     saveAppState(newState);
   }
   const lesson = state.lessons.find(l => l.id === state.active);
-  const screens = ['home', 'timetable', 'health', 'reports', 'settings'];
+  const activeStaff = coachSessionStaff(state);
+  const coachOnly = !!activeStaff && activeStaff.role !== 'Admin';
+  const screens = coachOnly ? ['home', 'timetable'] : ['home', 'timetable', 'health', 'reports', 'settings'];
   return <>
-    <div className='top'><div className='brand'>Stage Flow</div><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset</button></div>
+    <div className='top'>
+      <div className='brand'>Stage Flow</div>
+      {activeStaff?.role === 'Admin' ? <button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset</button> : coachOnly ? <button className='btn' onClick={() => { clearCoachSessionStaffId(); location.reload(); }}>Lock</button> : null}
+    </div>
     <div className='wrap'>
       <nav className='rail'>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list' })}>{screen[0].toUpperCase()}</button>)}</nav>
       <main>
-        {state.screen === 'home' && <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />}
+        {state.screen === 'home' && (coachOnly ? <CoachHome state={state} update={update} staff={activeStaff} /> : <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />)}
         {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
         {state.screen === 'timetable' && state.step !== 'list' && (lesson ? <Lesson state={state} update={update} lesson={lesson} /> : <MissingLesson update={update} />)}
         {state.screen === 'health' && <HealthCheck state={state} update={update} />}
@@ -291,6 +296,24 @@ function Home({ state, update, hydroStatus, enableHydrotherapy }) {
     </section>
   </>;
 }
+function CoachHome({ state, update, staff }) {
+  const day = todayWeekday();
+  const lessons = [...state.lessons]
+    .filter(lesson => lessonDay(lesson) === day && lesson.coach === staff.name)
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+
+  return <>
+    <section className='hero stage-hero coach-home-hero'><h1>{staff.name}</h1><p>{day}</p></section>
+    <section className='card coach-day-card'>
+      <div className='coach-day-head'><h2>Today</h2><span className='pill'>{lessons.length} session{lessons.length === 1 ? '' : 's'}</span></div>
+      <div className='coach-lesson-list'>
+        {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions assigned today.</p>}
+      </div>
+    </section>
+    <button className='btn org coach-full-button' onClick={() => update({ screen: 'timetable', step: 'list' })}>Open timetable</button>
+  </>;
+}
+
 
 function CoachPinGate({ state, onUnlock }) {
   const [digits, setDigits] = useState(['', '', '', '', '']);
@@ -533,22 +556,42 @@ function LessonSetup({ state, update, lesson }) {
 function Register({ state, update, lesson }) {
   const kids = state.learners.filter(p => p.lesson === lesson.id);
   const [names, setNames] = useState('');
+  const staff = coachSessionStaff(state);
+  const coachOnly = !!staff && staff.role !== 'Admin';
+
   function changeLearner(id, patch) {
     update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) });
   }
+
   function addNames() {
     const newKids = createLearnersFromText(names, lesson.id, firstStageForGroup(state, lesson.groupTemplateId));
     if (!newKids.length) return;
     update({ learners: [...state.learners, ...newKids], selected: newKids[0].id });
     setNames('');
   }
+
   function removeLearner(id) {
     update({ learners: state.learners.filter(p => p.id !== id), selected: state.selected === id ? '' : state.selected });
   }
+
   return <>
-    <section className='card'><h2>Register</h2>{kids.map(p => <div className='criteria register-row' key={p.id}><div><b>{p.name}</b><p className='muted'>{p.att} · {completionText(state, lesson, p)}</p></div><div className='score-buttons'>{attendanceOptions.map(option => <button key={option} className={'score-btn ' + (p.att === option ? 'on' : '')} onClick={() => changeLearner(p.id, { att: option })}>{option}</button>)}<button className='score-btn' onClick={() => removeLearner(p.id)}>Remove</button></div></div>)}</section>
-    <section className='card'><h2>Add learners</h2><p className='muted'>One name per line.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names to this session</button></section>
-    <div className='footer'><button className='btn' onClick={() => update(coachSessionStaff(state)?.role !== 'Admin' ? { step: 'list', active: '' } : { step: 'edit' })}>{coachSessionStaff(state)?.role !== 'Admin' ? 'Back to today' : 'Back'}</button><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button></div>
+    <section className='card register-card'>
+      <div className='register-head'><h2>Register</h2><span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span></div>
+      <div className='register-list'>
+        {kids.map(p => <div className='register-person' key={p.id}>
+          <div className='register-person-main'>
+            <b>{p.name}</b>
+            <small>{completionText(state, lesson, p)}</small>
+          </div>
+          <select className={'attendance-select ' + (p.att === 'Absent' ? 'absent' : '')} value={p.att || 'Present'} onChange={e => changeLearner(p.id, { att: e.target.value })} aria-label={`${p.name} attendance`}>
+            {attendanceOptions.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+          {!coachOnly && <button className='register-remove' onClick={() => removeLearner(p.id)}>Remove</button>}
+        </div>)}
+      </div>
+    </section>
+    {!coachOnly && <section className='card'><h2>Add learners</h2><p className='muted'>One name per line.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names</button></section>}
+    <div className='footer'><button className='btn' onClick={() => update(coachOnly ? { step: 'list', active: '' } : { step: 'edit' })}>{coachOnly ? 'Back to today' : 'Back'}</button><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button></div>
   </>;
 }
 
