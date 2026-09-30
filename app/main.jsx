@@ -4,6 +4,7 @@ import './styles/app.css';
 import './styles/calendar-overlay.css';
 import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
+import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
@@ -706,6 +707,12 @@ function Assess({ state, update, lesson }) {
         <h3>National Curriculum</h3>
         {nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}
       </>}
+      <LearnerSessionRecord
+        lesson={lesson}
+        learner={selected}
+        note={selected.sessionNote || ''}
+        onNote={value => changeLearner(selected.id, { sessionNote: value })}
+      />
     </section>}
 
     {groupList && <section className='card assessment-picker'>
@@ -738,6 +745,98 @@ function Assess({ state, update, lesson }) {
       {coachOnly ? <button className='btn org' onClick={() => update({ lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item), step: 'list', active: '' })}>Save & finish</button> : <button className='btn org' onClick={() => update({ step: 'save' })}>Save session</button>}
     </div>
   </>;
+}
+
+function LearnerSessionRecord({ lesson, learner, note, onNote }) {
+  const [evidence, setEvidence] = useState([]);
+  const [evidenceError, setEvidenceError] = useState('');
+  const [loadingEvidence, setLoadingEvidence] = useState(true);
+
+  async function refreshEvidence() {
+    setLoadingEvidence(true);
+    setEvidenceError('');
+    try {
+      const records = await listLocalEvidence(lesson.id, learner.id);
+      setEvidence(records.map(record => ({ ...record, url: URL.createObjectURL(record.blob) })));
+    } catch (error) {
+      setEvidenceError(error?.message || 'Could not load local evidence');
+    } finally {
+      setLoadingEvidence(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    setLoadingEvidence(true);
+    setEvidenceError('');
+    listLocalEvidence(lesson.id, learner.id)
+      .then(records => {
+        if (!active) return;
+        setEvidence(records.map(record => ({ ...record, url: URL.createObjectURL(record.blob) })));
+      })
+      .catch(error => {
+        if (active) setEvidenceError(error?.message || 'Could not load local evidence');
+      })
+      .finally(() => {
+        if (active) setLoadingEvidence(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [lesson.id, learner.id]);
+
+  async function addEvidence(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setEvidenceError('');
+    try {
+      for (const file of files) await saveLocalEvidence(file, lesson.id, learner.id);
+      await refreshEvidence();
+    } catch (error) {
+      setEvidenceError(error?.message || 'Could not save that file');
+    } finally {
+      event.target.value = '';
+    }
+  }
+
+  async function removeEvidence(item) {
+    try {
+      await deleteLocalEvidence(item.id);
+      if (item.url) URL.revokeObjectURL(item.url);
+      setEvidence(current => current.filter(record => record.id !== item.id));
+    } catch (error) {
+      setEvidenceError(error?.message || 'Could not remove that file');
+    }
+  }
+
+  return <section className='learner-session-record'>
+    <div className='session-record-head'>
+      <div><h3>Session notes & evidence</h3><p className='muted'>Saved to {learner.name} for this session.</p></div>
+    </div>
+    <textarea
+      className='session-note'
+      value={note}
+      onChange={event => onNote(event.target.value)}
+      placeholder='Add a quick note about progress, support, confidence or what to try next…'
+    />
+    <div className='evidence-actions'>
+      <label className='btn evidence-upload'>
+        Add photo / video
+        <input type='file' accept='image/*,video/*' multiple onChange={addEvidence} />
+      </label>
+      <span>Stored on this device only</span>
+    </div>
+    {evidenceError && <p className='evidence-error'>{evidenceError}</p>}
+    {loadingEvidence ? <p className='muted'>Loading evidence…</p> : evidence.length > 0 && <div className='evidence-grid'>
+      {evidence.map(item => <article className='evidence-item' key={item.id}>
+        {String(item.type).startsWith('video/')
+          ? <video src={item.url} controls preload='metadata' />
+          : <img src={item.url} alt={item.name || 'Session evidence'} />}
+        <div><span>{item.name}</span><button onClick={() => removeEvidence(item)}>Remove</button></div>
+      </article>)}
+    </div>}
+    <p className='evidence-safety'>Demo/local evidence only — use example children, not real pupil photos or videos yet.</p>
+  </section>;
 }
 
 function SkillScore({ criteria, value, onScore }) {
