@@ -326,7 +326,7 @@ export const demoLearners = [
   { id: 'p3', lesson: 'l4', name: '1:1 Example Swimmer', stage: 'Stage 3', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
   { id: 'p4', lesson: 'l5', name: 'PE Example Learner', stage: 'PE Fundamentals', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
   { id: 'p5', lesson: 'l6', name: 'Gymnastics Example Learner', stage: 'Gymnastics Beginner', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {} },
-  { id: 'demo-p1', lesson: 'l7', name: 'Ava Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
+  { id: 'demo-p1', lesson: 'l7', name: 'Ava Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '', notes: [{ id: 'demo-note-ava-1', source: 'Parent / carer', author: 'Charlotte', createdAt: '2026-09-30T09:00:00.000Z', text: 'Ava is feeling a little nervous today. Please keep the first few activities confidence-focused.' }] },
   { id: 'demo-p2', lesson: 'l7', name: 'Noah Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
   { id: 'demo-p3', lesson: 'l7', name: 'Mia Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
   { id: 'demo-p4', lesson: 'l7', name: 'Leo Example', stage: 'Demo Water Confidence', att: 'Present', res: {}, dist: { front: '0m', back: '0m' }, nc: {}, breathing: {}, sessionNote: '' },
