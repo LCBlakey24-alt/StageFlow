@@ -31,7 +31,7 @@ function coachSessionStaff(state) {
   return (state.staff || []).find(staff => staff.id === id) || null;
 }
 const durations = [15, 30, 45, 60, 75, 90, 105, 120];
-const modes = ['Stages + National Curriculum', 'National Curriculum only'];
+const modes = ['Stages + National Curriculum', 'Stages only', 'National Curriculum only'];
 const attendanceOptions = ['Present', 'Absent', 'Late', 'Not Taking Part'];
 const scores = ['no', 'float', 'pass'];
 const scoreLabels = { no: 'Not assessed', float: 'Almost there', pass: 'Passed' };
@@ -625,7 +625,7 @@ function Assess({ state, update, lesson }) {
   const selected = kids.find(p => p.id === state.selected) || kids[0];
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
   const mode = state.assessmentMode || 'swimmer';
-  const showNationalCurriculum = lessonProgramme(lesson) === 'School Swimming';
+  const showNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
   const [detailView, setDetailView] = useState('list');
