@@ -494,80 +494,133 @@ function CoachWeek({ state, update, staff }) {
 
 function SessionSetupWizard({ state, update, initialDay, onClose }) {
   const [step, setStep] = useState(0);
-  const [day, setDay] = useState(initialDay || 'Monday');
   const [programme, setProgramme] = useState('School Swimming');
-  const [groupId, setGroupId] = useState(() => defaultGroupForProgramme('School Swimming', groups(state)));
+  const [day, setDay] = useState(initialDay || 'Monday');
   const [count, setCount] = useState(1);
   const [startTime, setStartTime] = useState('09:00');
   const [duration, setDuration] = useState(30);
   const [gap, setGap] = useState(0);
-  const [times, setTimes] = useState(['09:00']);
   const [coach, setCoach] = useState('');
   const [venue, setVenue] = useState(defaultSchoolForProgramme('School Swimming'));
 
-  const programmeGroups = groups(state).filter(group => programmeForGroup(group) === programme || programmeForGroup(group) === 'Custom');
-  const selectedGroup = groups(state).find(group => group.id === groupId);
+  function typeLabel(value) {
+    if (value === 'School Swimming') return 'Swimming';
+    if (value === 'Evening Swim Group') return 'Evening swimming';
+    if (value === 'Evening Swim 1:1') return '1:1 swimming';
+    if (value === 'Private Lessons') return 'Private swimming';
+    if (value === 'School PE') return 'PE';
+    return value;
+  }
+
+  function availableStagesFor(nextProgramme) {
+    const fromFramework = criteriaStagesForProgramme(nextProgramme, state.framework?.stages || []);
+    const fromGroups = groups(state)
+      .filter(group => programmeForGroup(group) === nextProgramme)
+      .flatMap(group => group.stages || []);
+    return [...new Set([...fromFramework, ...fromGroups])];
+  }
+
+  const stageOptions = availableStagesFor(programme);
+  const defaultStage = stageOptions[0] || '';
+  const [sessions, setSessions] = useState([{ time: '09:00', stage: defaultStage }]);
+
   const staffOptions = [
     { value: '', label: 'Unassigned' },
     ...(state.staff || []).map(person => ({ value: person.name, label: `${person.name} · ${person.role}` }))
   ];
 
   useEffect(() => {
-    const generated = Array.from({ length: count }, (_, index) =>
-      addMinutes(startTime, index * (Number(duration) + Number(gap)))
-    );
-    setTimes(generated);
+    const generated = Array.from({ length: count }, (_, index) => ({
+      time: addMinutes(startTime, index * (Number(duration) + Number(gap))),
+      stage: sessions[index]?.stage || defaultStage
+    }));
+    setSessions(generated);
   }, [count, startTime, duration, gap]);
 
   function chooseProgramme(next) {
     const normal = normaliseProgrammeName(next);
+    const nextStages = availableStagesFor(normal);
+    const nextDefaultStage = nextStages[0] || '';
     setProgramme(normal);
-    const nextGroup = defaultGroupForProgramme(normal, groups(state));
-    setGroupId(nextGroup);
     setVenue(defaultSchoolForProgramme(normal));
+    setSessions(current => current.map(item => ({ ...item, stage: nextDefaultStage })));
   }
 
-  function patchTime(index, value) {
-    setTimes(current => current.map((time, i) => i === index ? value : time));
+  function patchSession(index, patch) {
+    setSessions(current => current.map((session, i) => i === index ? { ...session, ...patch } : session));
+  }
+
+  function slug(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   }
 
   function createSessions() {
+    let templates = [...groups(state)];
+
+    function groupIdForStage(stage) {
+      const exact = templates.find(group =>
+        programmeForGroup(group) === programme &&
+        Array.isArray(group.stages) &&
+        group.stages.length === 1 &&
+        group.stages[0] === stage
+      );
+      if (exact) return exact.id;
+
+      const id = `auto-${slug(programme)}-${slug(stage)}`;
+      if (!templates.some(group => group.id === id)) {
+        templates.push({
+          id,
+          name: stage || typeLabel(programme),
+          detail: stage ? `${stage} criteria` : `${typeLabel(programme)} criteria`,
+          stages: stage ? [stage] : [],
+          colour: 'blue',
+          programme
+        });
+      }
+      return id;
+    }
+
     const now = Date.now();
-    const groupName = selectedGroup?.name || defaultLessonNameForProgramme(programme);
-    const newLessons = times.map((time, index) => ({
-      id: `l${now}-${index + 1}`,
-      day,
-      time,
-      duration: Number(duration) || 30,
-      school: venue || defaultSchoolForProgramme(programme),
-      year: 'Year group',
-      className: '',
-      coach,
-      name: count > 1 ? `${groupName} ${index + 1}` : groupName,
-      programme,
-      groupTemplateId: groupId,
-      mode: 'Stages + National Curriculum'
-    }));
+    const newLessons = sessions.map((session, index) => {
+      const groupId = groupIdForStage(session.stage);
+      const label = session.stage || typeLabel(programme);
+      return {
+        id: `l${now}-${index + 1}`,
+        day,
+        time: session.time,
+        duration: Number(duration) || 30,
+        school: venue || defaultSchoolForProgramme(programme),
+        year: 'Year group',
+        className: '',
+        coach,
+        name: count > 1 ? `${label} · Session ${index + 1}` : label,
+        programme,
+        groupTemplateId: groupId,
+        mode: programme === 'School Swimming' ? 'Stages + National Curriculum' : 'Stages only'
+      };
+    });
+
     update({
+      framework: { ...state.framework, groupTemplates: templates },
       lessons: [...state.lessons, ...newLessons],
       currentDay: day,
       step: 'list',
       active: '',
       timetableFilter: programme,
-      audit: [...(state.audit || []), `Created ${newLessons.length} ${day} session${newLessons.length === 1 ? '' : 's'}`]
+      audit: [...(state.audit || []), `Created ${newLessons.length} ${typeLabel(programme)} session${newLessons.length === 1 ? '' : 's'} on ${day}`]
     });
     onClose();
   }
 
-  const steps = ['Day', 'Lesson', 'Criteria', 'Sessions', 'Times', 'Review'];
+  const steps = ['Lesson type', 'When', 'Stages'];
 
   return <section className='card session-wizard'>
     <div className='session-wizard-top'>
-      <div><p className='muted'>Add sessions</p><h2>{steps[step]}</h2></div>
+      <div><p className='muted'>Quick session setup</p><h2>{steps[step]}</h2></div>
       <button className='btn session-wizard-close' onClick={onClose}>Close</button>
     </div>
 
-    <div className='session-wizard-steps'>
+    <div className='session-wizard-steps compact-wizard-steps'>
       {steps.map((label, index) => <button
         key={label}
         className={(index === step ? 'on ' : '') + (index < step ? 'done' : '')}
@@ -575,65 +628,60 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
       ><span>{index + 1}</span><b>{label}</b></button>)}
     </div>
 
-    {step === 0 && <div className='wizard-choice-grid day-choice-grid'>
-      {days.map(option => <button key={option} className={'wizard-choice ' + (day === option ? 'on' : '')} onClick={() => setDay(option)}><strong>{option}</strong></button>)}
-    </div>}
-
-    {step === 1 && <div className='wizard-choice-grid'>
-      {programmes.filter(item => item !== 'Custom').map(option => <button key={option} className={'wizard-choice ' + (programme === option ? 'on' : '')} onClick={() => chooseProgramme(option)}><strong>{option}</strong></button>)}
-    </div>}
-
-    {step === 2 && <div className='wizard-choice-list'>
-      {(programmeGroups.length ? programmeGroups : groups(state)).map(group => <button key={group.id} className={'wizard-choice-row ' + (groupId === group.id ? 'on' : '')} onClick={() => setGroupId(group.id)}>
-        <span><strong>{group.name}</strong><small>{group.detail || (group.stages || []).join(', ')}</small></span><b>›</b>
-      </button>)}
-    </div>}
-
-    {step === 3 && <div>
-      <p className='wizard-question'>How many sessions happen on {day}?</p>
-      <div className='session-count-grid'>
-        {[1,2,3,4,5,6,7,8].map(number => <button key={number} className={count === number ? 'on' : ''} onClick={() => setCount(number)}>{number}</button>)}
+    {step === 0 && <div>
+      <p className='wizard-question'>What are you teaching?</p>
+      <div className='wizard-choice-grid lesson-type-grid'>
+        {programmes.filter(item => item !== 'Custom').map(option => <button key={option} className={'wizard-choice ' + (programme === option ? 'on' : '')} onClick={() => chooseProgramme(option)}><strong>{typeLabel(option)}</strong></button>)}
       </div>
     </div>}
 
-    {step === 4 && <div className='wizard-schedule'>
-      <div className='grid2'>
+    {step === 1 && <div className='wizard-schedule'>
+      <p className='wizard-question'>When do these sessions happen?</p>
+      <div className='day-mini-grid'>
+        {days.map(option => <button key={option} className={day === option ? 'on' : ''} onClick={() => setDay(option)}>{option.slice(0, 3)}</button>)}
+      </div>
+      <div className='grid2 wizard-time-controls'>
+        <div className='field'><label>How many sessions?</label><select value={String(count)} onChange={event => setCount(Number(event.target.value) || 1)}>{[1,2,3,4,5,6,7,8,9,10].map(number => <option key={number} value={number}>{number}</option>)}</select></div>
         <div className='field'><label>First session</label><input type='time' value={startTime} onChange={event => setStartTime(event.target.value)} /></div>
         <Select label='Duration' value={String(duration)} onChange={value => setDuration(Number(value) || 30)} options={durations.map(value => ({ value: String(value), label: `${value} minutes` }))} />
-        <Select label='Gap between sessions' value={String(gap)} onChange={value => setGap(Number(value) || 0)} options={[0,5,10,15,20,30].map(value => ({ value: String(value), label: value ? `${value} minutes` : 'No gap' }))} />
-        <Select label='Coach' value={coach} onChange={setCoach} options={staffOptions} />
+        <Select label='Gap' value={String(gap)} onChange={value => setGap(Number(value) || 0)} options={[0,5,10,15,20,30].map(value => ({ value: String(value), label: value ? `${value} minutes` : 'No gap' }))} />
       </div>
-      <Field label='School / venue' value={venue} onChange={setVenue} />
-      <div className='generated-times'>
-        <h3>Session times</h3>
-        {times.map((time, index) => <div className='generated-time-row' key={index}>
-          <span>Session {index + 1}</span>
-          <input type='time' value={time} onChange={event => patchTime(index, event.target.value)} />
-          <small>{duration} mins</small>
-        </div>)}
+      <div className='quick-times-preview'>
+        {sessions.map((session, index) => <span key={index}>{session.time}</span>)}
       </div>
     </div>}
 
-    {step === 5 && <div className='wizard-review'>
-      <div className='wizard-review-summary'>
-        <div><span>Day</span><strong>{day}</strong></div>
-        <div><span>Lesson</span><strong>{programme}</strong></div>
-        <div><span>Criteria</span><strong>{selectedGroup?.name || 'Not selected'}</strong></div>
-        <div><span>Coach</span><strong>{coach || 'Unassigned'}</strong></div>
+    {step === 2 && <div className='wizard-stage-assignments'>
+      <div className='grid2 wizard-shared-fields'>
+        <Select label='Coach' value={coach} onChange={setCoach} options={staffOptions} />
+        <Field label='School / venue' value={venue} onChange={setVenue} />
       </div>
-      <div className='wizard-review-list'>
-        {times.map((time, index) => <div key={index}><span>{time}</span><strong>{count > 1 ? `${selectedGroup?.name || defaultLessonNameForProgramme(programme)} ${index + 1}` : (selectedGroup?.name || defaultLessonNameForProgramme(programme))}</strong><small>{duration} mins · {venue}</small></div>)}
+      <p className='wizard-question'>What is each session working on?</p>
+      <div className='session-stage-list'>
+        {sessions.map((session, index) => <div className='session-stage-row' key={index}>
+          <div className='session-stage-time'>
+            <span>Session {index + 1}</span>
+            <input type='time' value={session.time} onChange={event => patchSession(index, { time: event.target.value })} />
+          </div>
+          <div className='field'>
+            <label>Stage / criteria</label>
+            <select value={session.stage || ''} onChange={event => patchSession(index, { stage: event.target.value })}>
+              {stageOptions.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+            </select>
+          </div>
+        </div>)}
       </div>
     </div>}
 
     <div className='session-wizard-footer'>
       <button className='btn' disabled={step === 0} onClick={() => setStep(current => Math.max(0, current - 1))}>Back</button>
-      {step < steps.length - 1
-        ? <button className='btn org' disabled={(step === 2 && !groupId)} onClick={() => setStep(current => Math.min(steps.length - 1, current + 1))}>Continue</button>
-        : <button className='btn org' disabled={!groupId || !times.length} onClick={createSessions}>Create {count} session{count === 1 ? '' : 's'}</button>}
+      {step < 2
+        ? <button className='btn org' onClick={() => setStep(current => current + 1)}>Continue</button>
+        : <button className='btn org' disabled={!sessions.length || sessions.some(session => !session.stage)} onClick={createSessions}>Create {count} session{count === 1 ? '' : 's'}</button>}
     </div>
   </section>;
 }
+
 
 function AdminTimetable({ state, update }) {
   const day = state.currentDay || 'Tuesday';
