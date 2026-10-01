@@ -5,7 +5,7 @@ import './styles/calendar-overlay.css';
 import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
-import { StageFlowAccountGate } from './lib/accountAuth.jsx';
+import { StageFlowAccountGate, StaffAccountsPanel } from './lib/accountAuth.jsx';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
@@ -1632,8 +1632,11 @@ function Permissions({ state, update }) {
     patchStaff(id, { accessCode: code });
   }
 
-  return <section className='card'>
-    <h2>Staff access</h2>
+  return <>
+  <StaffAccountsPanel />
+  <section className='card'>
+    <h2>Quick access codes</h2>
+    <p className='muted'>Optional demo/poolside codes. Real account access uses the email login above.</p>
     <div className='staff-access-list'>
       {state.staff.map(staff => {
         const code = String(staff.accessCode || '');
@@ -1661,8 +1664,9 @@ function Permissions({ state, update }) {
       </div>;
       })}
     </div>
-    <p className='muted staff-code-note'>Coach codes are for the current demo flow. Proper staff authentication will replace them before real pupil data is used.</p>
-  </section>;
+    <p className='muted staff-code-note'>Quick codes are a convenience layer only. Email/password accounts are the real staff identity.</p>
+  </section>
+  </>;
 }
 
 function Field({ label, value, onChange, placeholder = '' }) {

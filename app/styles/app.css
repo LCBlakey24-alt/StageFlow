@@ -375,3 +375,12 @@ textarea{min-height:92px;resize:vertical}
 .account-loading{min-height:100vh;display:grid;place-items:center;color:var(--navy);font-weight:900}
 .account-unlinked{width:min(520px,100%);margin:auto}
 .account-email{font-weight:900;color:var(--navy)}
+
+.staff-accounts-card{border-bottom:5px solid var(--orange)}
+.staff-invite-form{display:grid;gap:10px;margin-top:12px}
+.staff-account-list{margin-top:18px;display:grid;gap:8px}
+.staff-account-list-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.staff-account-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;border:1px solid var(--line);border-radius:14px;padding:10px 11px;background:#fff}
+.staff-account-row>div{display:grid;gap:2px}
+.staff-account-row small{color:var(--muted);font-weight:800;overflow-wrap:anywhere}
+@media(max-width:600px){.staff-account-row{grid-template-columns:1fr}.staff-account-row .pill{justify-self:start}}

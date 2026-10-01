@@ -242,3 +242,132 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError }) {
     </div>
   </div>;
 }
+
+
+export function StaffAccountsPanel() {
+  const [staff, setStaff] = useState([]);
+  const [invites, setInvites] = useState([]);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('coach');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  async function refresh() {
+    if (!supabaseConfigured || !supabase) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    const [staffResult, inviteResult] = await Promise.all([
+      supabase
+        .from('staff_members')
+        .select('id, display_name, email, role, is_active, created_at, auth_user_id')
+        .order('display_name'),
+      supabase
+        .from('staff_invitations')
+        .select('id, email, display_name, role, expires_at, accepted_at, created_at')
+        .order('created_at', { ascending: false })
+    ]);
+
+    if (staffResult.error) setError(staffResult.error.message);
+    if (inviteResult.error && !staffResult.error) setError(inviteResult.error.message);
+
+    setStaff(staffResult.data || []);
+    setInvites(inviteResult.data || []);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function invite(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanName = name.trim();
+      if (!cleanName || !cleanEmail) throw new Error('Add a staff name and email address.');
+
+      const permissions = role === 'admin'
+        ? { sessions: true, groups: true, learners: true, assess: true, export: true, framework: true, certificates: true }
+        : { sessions: true, groups: false, learners: true, assess: true, export: false, framework: false, certificates: false };
+
+      const { data, error: inviteError } = await supabase.functions.invoke('invite-staff', {
+        body: {
+          displayName: cleanName,
+          email: cleanEmail,
+          role,
+          permissions,
+          redirectTo: `${window.location.origin}/?auth=invite`
+        }
+      });
+
+      if (inviteError) throw inviteError;
+      if (data?.error) throw new Error(data.error);
+
+      setName('');
+      setEmail('');
+      setRole('coach');
+      setMessage(`Invitation sent to ${cleanEmail}.`);
+      await refresh();
+    } catch (inviteError) {
+      setError(inviteError?.message || 'Could not send that staff invitation.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!supabaseConfigured) return null;
+
+  return <section className='card staff-accounts-card'>
+    <div className='admin-framework-head'>
+      <div>
+        <h2>Staff accounts</h2>
+        <p className='muted'>Invite staff by email and link their login to this organisation.</p>
+      </div>
+      <button className='btn' onClick={refresh} disabled={loading}>Refresh</button>
+    </div>
+
+    <form className='staff-invite-form' onSubmit={invite}>
+      <div className='grid2'>
+        <div className='field'><label>Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder='Coach name' /></div>
+        <div className='field'><label>Email</label><input type='email' value={email} onChange={e => setEmail(e.target.value)} placeholder='coach@example.com' /></div>
+      </div>
+      <div className='field'>
+        <label>Role</label>
+        <select value={role} onChange={e => setRole(e.target.value)}>
+          <option value='coach'>Coach</option>
+          <option value='admin'>Admin</option>
+        </select>
+      </div>
+      {message && <p className='account-message'>{message}</p>}
+      {error && <p className='account-error'>{error}</p>}
+      <button className='btn org' disabled={busy}>{busy ? 'Sending invitation…' : 'Invite staff member'}</button>
+    </form>
+
+    <div className='staff-account-list'>
+      <div className='staff-account-list-head'><h3>Linked staff</h3><span className='pill'>{staff.length}</span></div>
+      {loading ? <p className='muted'>Loading accounts…</p> : staff.length ? staff.map(person => <article className='staff-account-row' key={person.id}>
+        <div><strong>{person.display_name}</strong><small>{person.email}</small></div>
+        <span className='pill'>{person.role}</span>
+      </article>) : <p className='muted'>No linked staff accounts yet.</p>}
+    </div>
+
+    {invites.length > 0 && <div className='staff-account-list'>
+      <div className='staff-account-list-head'><h3>Invitations</h3><span className='pill'>{invites.length}</span></div>
+      {invites.slice(0, 10).map(invite => <article className='staff-account-row' key={invite.id}>
+        <div><strong>{invite.display_name || invite.email}</strong><small>{invite.email}</small></div>
+        <span className='pill'>{invite.accepted_at ? 'Account created' : 'Invited'}</span>
+      </article>)}
+    </div>}
+  </section>;
+}
