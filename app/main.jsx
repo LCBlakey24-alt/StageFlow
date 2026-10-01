@@ -222,9 +222,14 @@ function applyDistanceAutoPass(state, currentResults, stroke, metres) {
   });
   return next;
 }
+function noCriteriaLabel(lesson) {
+  const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only';
+  return usesNationalCurriculum ? 'National Curriculum only' : 'No assessment criteria';
+}
+
 function completionText(state, lesson, learner) {
   const criteria = groupCriteria(state, lesson);
-  if (!criteria.length) return 'NC only';
+  if (!criteria.length) return noCriteriaLabel(lesson);
   const passed = criteria.filter(c => learner?.res?.[c] === 'pass').length;
   return `${passed}/${criteria.length} criteria passed`;
 }
@@ -233,8 +238,8 @@ function isMarkedAssessment(value) {
   return value === 'float' || value === 'pass' || String(value || '').startsWith('mark-');
 }
 
-function childAssessmentSummary(criteria, learner) {
-  if (!criteria.length) return 'National Curriculum only';
+function childAssessmentSummary(criteria, learner, lesson) {
+  if (!criteria.length) return noCriteriaLabel(lesson);
   const marked = criteria.filter(skill => isMarkedAssessment(learner?.res?.[skill])).length;
   const passed = criteria.filter(skill => learner?.res?.[skill] === 'pass').length;
   if (!marked) return 'Not marked yet';
@@ -291,6 +296,38 @@ function loadInitialAppState() {
   return loaded;
 }
 
+class StageFlowErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Stage Flow recovered from a UI error', error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return <div className='app-error-shell'>
+      <section className='card app-error-card'>
+        <h1>Stage Flow hit a problem</h1>
+        <p className='muted'>Your saved demo data has not been cleared. Reload the app, or return to staff access.</p>
+        <div className='app-error-actions'>
+          <button className='btn org' onClick={() => window.location.reload()}>Reload app</button>
+          <button className='btn' onClick={() => {
+            clearCoachSessionStaffId();
+            window.location.assign(isInstalledAppLaunch() ? '/?app=1' : '/');
+          }}>Staff access</button>
+        </div>
+      </section>
+    </div>;
+  }
+}
+
 function App() {
   const [state, setState] = useState(() => loadInitialAppState());
   const [hydroStatus, setHydroStatus] = useState('idle');
@@ -309,9 +346,11 @@ function App() {
   }
 
   function update(next) {
-    const newState = typeof next === 'function' ? next(state) : { ...state, ...next };
-    setState(newState);
-    saveAppState(newState);
+    setState(current => {
+      const newState = typeof next === 'function' ? next(current) : { ...current, ...next };
+      saveAppState(newState);
+      return newState;
+    });
   }
 
   function unlockStaff(id) {
@@ -346,7 +385,11 @@ function App() {
       <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list', active: screen === 'timetable' ? state.active : '' })}>{screen[0].toUpperCase()}</button>)}</nav>
       <main>
         {needsUnlock ? <CoachPinGate state={state} onUnlock={unlockStaff} /> : <>
-          {state.screen === 'home' && (coachOnly ? <CoachHome state={state} update={update} staff={activeStaff} /> : <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />)}
+          {state.screen === 'home' && (!activeStaff
+            ? <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />
+            : coachOnly
+              ? <CoachHome state={state} update={update} staff={activeStaff} />
+              : <AdminHome state={state} update={update} staff={activeStaff} />)}
           {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
           {state.screen === 'timetable' && state.step !== 'list' && (lesson ? <Lesson state={state} update={update} lesson={lesson} /> : <MissingLesson update={update} />)}
           {state.screen === 'health' && <HealthCheck state={state} update={update} />}
@@ -463,6 +506,28 @@ function Home({ state, update, hydroStatus, enableHydrotherapy }) {
       <h2>SEN Hydrotherapy <span className='pill'>Demo</span></h2>
       <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Staff access required</button>
       <p className='muted' style={{ marginTop: 8 }}>Protected demo area — don’t use real pupil data yet.</p>
+    </section>
+  </>;
+}
+
+function AdminHome({ state, update, staff }) {
+  const day = todayWeekday();
+  const lessons = [...state.lessons]
+    .filter(lesson => lessonDay(lesson) === day)
+    .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+
+  return <>
+    <section className='hero stage-hero coach-home-hero'><h1>{staff.name}</h1><p>Admin · {day}</p></section>
+    <section className='quick-actions admin-home-actions'>
+      <button className='action-card primary-action' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}><span>Open timetable</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'settings', tab: 'groups', step: 'list', active: '' })}><span>Criteria & settings</span></button>
+      <button className='action-card' onClick={() => update({ screen: 'reports', step: 'list', active: '' })}><span>Progress & reports</span></button>
+    </section>
+    <section className='card coach-day-card'>
+      <div className='coach-day-head'><h2>Today</h2><span className='pill'>{lessons.length} session{lessons.length === 1 ? '' : 's'}</span></div>
+      <div className='coach-lesson-list'>
+        {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions scheduled today.</p>}
+      </div>
     </section>
   </>;
 }
@@ -921,20 +986,22 @@ function LearnerNotesPanel({ state, update, learner, canEdit, onClose }) {
       author: staff?.name || 'Admin',
       createdAt: new Date().toISOString()
     };
-    update({
-      learners: state.learners.map(item => item.id === learner.id
+    update(current => ({
+      ...current,
+      learners: current.learners.map(item => item.id === learner.id
         ? { ...item, notes: [...(Array.isArray(item.notes) ? item.notes : []), note] }
         : item)
-    });
+    }));
     setDraft('');
   }
 
   function removeNote(noteId) {
-    update({
-      learners: state.learners.map(item => item.id === learner.id
+    update(current => ({
+      ...current,
+      learners: current.learners.map(item => item.id === learner.id
         ? { ...item, notes: (Array.isArray(item.notes) ? item.notes : []).filter(note => note.id !== noteId) }
         : item)
-    });
+    }));
   }
 
   return <section className='learner-notes-panel'>
@@ -978,7 +1045,10 @@ function Register({ state, update, lesson }) {
   const lessonNotes = kids.flatMap(learner => (Array.isArray(learner.notes) ? learner.notes : []).map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name })));
 
   function changeLearner(id, patch) {
-    update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) });
+    update(current => ({
+      ...current,
+      learners: current.learners.map(p => p.id === id ? { ...p, ...patch } : p)
+    }));
   }
 
   function addNames() {
@@ -1049,7 +1119,10 @@ function Assess({ state, update, lesson }) {
   const [detailView, setDetailView] = useState('list');
 
   function changeLearner(id, patch) {
-    update({ learners: state.learners.map(p => p.id === id ? { ...p, ...patch } : p) });
+    update(current => ({
+      ...current,
+      learners: current.learners.map(p => p.id === id ? { ...p, ...patch } : p)
+    }));
   }
 
   function scoreLearner(learner, criteriaItem, value) {
@@ -1106,7 +1179,7 @@ function Assess({ state, update, lesson }) {
           const marked = criteria.filter(skill => isMarkedAssessment(child.res?.[skill])).length;
           const progressClass = marked && marked === criteria.length ? ' all-marked' : marked ? ' started' : '';
           return <button className={'assessment-list-button' + progressClass} key={child.id} onClick={() => openChild(child)}>
-            <span><strong>{child.name}</strong><small>{childAssessmentSummary(criteria, child)}</small></span>
+            <span><strong>{child.name}</strong><small>{childAssessmentSummary(criteria, child, lesson)}</small></span>
             <b>›</b>
           </button>;
         })}
@@ -1115,7 +1188,7 @@ function Assess({ state, update, lesson }) {
 
     {individualDetail && <section className='card assessment-card'>
       <button className='assessment-back' onClick={() => setDetailView('list')}>‹ Back to children</button>
-      <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{childAssessmentSummary(criteria, selected)}</p></div></div>
+      <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{childAssessmentSummary(criteria, selected, lesson)}</p></div></div>
       {lesson.mode !== 'National Curriculum only' && <>
         <div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div>
         <p className='muted'>Higher distances also mark matching lower-distance skills.</p>
@@ -1525,4 +1598,4 @@ function Distance({ label, value, onChange }) {
   return <Select label={label} value={value || '0m'} onChange={onChange} options={distances.map(x => ({ value: x, label: x }))} />;
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(<StageFlowErrorBoundary><App /></StageFlowErrorBoundary>);
