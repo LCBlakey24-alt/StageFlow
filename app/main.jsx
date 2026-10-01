@@ -374,8 +374,19 @@ function App() {
   const screens = !activeStaff
     ? ['home', 'timetable']
     : coachOnly
-      ? ['home', 'timetable']
-      : ['home', 'timetable', 'health', 'reports', 'settings'];
+      ? ['home', ...(activeStaff.sessions === false ? [] : ['timetable'])]
+      : [
+          'home',
+          ...(activeStaff.sessions === false ? [] : ['timetable']),
+          'health',
+          ...(activeStaff.export === false ? [] : ['reports']),
+          ...((activeStaff.groups === false && activeStaff.framework === false && activeStaff.certificates === false) ? [] : ['settings'])
+        ];
+  const currentScreen = screens.includes(state.screen) ? state.screen : 'home';
+  const lessonAllowed = !!lesson && !!activeStaff && (
+    activeStaff.role === 'Admin' ||
+    (activeStaff.sessions !== false && activeStaff.learners !== false && lesson.coach === activeStaff.name)
+  );
 
   return <>
     <div className='top'>
@@ -385,20 +396,26 @@ function App() {
     <div className='wrap'>
       <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => {
         const label = screen === 'reports' ? 'Progress' : screen[0].toUpperCase() + screen.slice(1);
-        return <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list', active: screen === 'timetable' ? state.active : '' })}>{label}</button>;
+        return <button key={screen} className={currentScreen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list', active: screen === 'timetable' ? state.active : '' })}>{label}</button>;
       })}</nav>
       <main>
         {needsUnlock ? <CoachPinGate state={state} onUnlock={unlockStaff} /> : <>
-          {state.screen === 'home' && (!activeStaff
+          {currentScreen === 'home' && (!activeStaff
             ? <Home state={state} update={update} hydroStatus={hydroStatus} enableHydrotherapy={enableHydrotherapy} />
             : coachOnly
               ? <CoachHome state={state} update={update} staff={activeStaff} />
               : <AdminHome state={state} update={update} staff={activeStaff} />)}
-          {state.screen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
-          {state.screen === 'timetable' && state.step !== 'list' && (lesson ? <Lesson state={state} update={update} lesson={lesson} /> : <MissingLesson update={update} />)}
-          {state.screen === 'health' && <HealthCheck state={state} update={update} />}
-          {state.screen === 'reports' && <Reports state={state} update={update} />}
-          {state.screen === 'settings' && <Settings state={state} update={update} />}
+          {currentScreen === 'timetable' && state.step === 'list' && <Timetable state={state} update={update} />}
+          {currentScreen === 'timetable' && state.step !== 'list' && (
+            !lesson
+              ? <MissingLesson update={update} />
+              : lessonAllowed
+                ? <Lesson state={state} update={update} lesson={lesson} />
+                : <SessionAccessDenied update={update} />
+          )}
+          {currentScreen === 'health' && <HealthCheck state={state} update={update} />}
+          {currentScreen === 'reports' && <Reports state={state} update={update} />}
+          {currentScreen === 'settings' && <Settings state={state} update={update} />}
         </>}
       </main>
     </div>
@@ -903,6 +920,10 @@ function Timetable({ state, update }) {
 
   if (!staff) return <CoachPinGate state={state} onUnlock={id => { saveCoachSessionStaffId(id); update({ screen: 'timetable', step: 'list' }); }} />;
 
+  if (staff.sessions === false) {
+    return <section className='card'><h2>No timetable access</h2><p className='muted'>This staff account does not currently have session access.</p></section>;
+  }
+
   const canManage = staff.role === 'Admin';
   return <>
     <section className='hero compact-hero coach-hero'>
@@ -923,6 +944,18 @@ function Timetable({ state, update }) {
 function LessonCard({ state, update, lesson }) {
   const swimmers = state.learners.filter(p => p.lesson === lesson.id);
   return <section className='card lesson'><div className='time'>{lesson.time}</div><div><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {lesson.school} · {lesson.year}</p><span className='pill'>{groupLabel(state, lesson)}</span><span className='pill'>{swimmers.length} learners</span><span className='pill'>{groupCriteria(state, lesson).length} criteria</span></div><div className='score-buttons'><button className='btn' onClick={() => update({ active: lesson.id, step: 'edit' })}>Edit</button><button className='btn org' onClick={() => update({ active: lesson.id, step: 'register' })}>Open</button></div></section>;
+}
+
+function SessionAccessDenied({ update }) {
+  return <>
+    <section className='card'>
+      <h2>Session access restricted</h2>
+      <p className='muted'>This session is not assigned to the signed-in coach, or this staff account does not have learner access.</p>
+    </section>
+    <div className='footer'>
+      <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Back to my timetable</button>
+    </div>
+  </>;
 }
 
 function MissingLesson({ update }) {
@@ -1119,7 +1152,17 @@ function Register({ state, update, lesson }) {
       </div>
     </section>
     {!coachOnly && <section className='card'><h2>Add learners</h2><p className='muted'>One name per line.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names</button></section>}
-    <div className='footer'><button className='btn' onClick={() => update(coachOnly ? { step: 'list', active: '' } : { step: 'edit' })}>{coachOnly ? 'Back to today' : 'Back'}</button><button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button></div>
+    <div className='footer'>
+      <button className='btn' onClick={() => update(coachOnly ? { step: 'list', active: '' } : { step: 'edit' })}>{coachOnly ? 'Back to today' : 'Back'}</button>
+      {staff?.assess === false
+        ? <button className='btn org' onClick={() => update(current => ({
+            ...current,
+            lessons: current.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item),
+            step: 'list',
+            active: ''
+          }))}>Save & finish</button>
+        : <button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button>}
+    </div>
   </>;
 }
 
@@ -1403,8 +1446,16 @@ function Reports({ state, update }) {
 }
 
 function Settings({ state, update }) {
-  const tabs = ['groups', 'framework', 'certificates', 'permissions', 'audit'];
-  return <><section className='hero compact-hero'><h1>Settings</h1></section><div className='tabs'>{tabs.map(t => <button key={t} className={(state.tab || 'groups') === t ? 'on' : ''} onClick={() => update({ tab: t })}>{t === 'groups' ? 'criteria groups' : t}</button>)}</div>{(state.tab || 'groups') === 'groups' && <Groups state={state} update={update} />}{state.tab === 'framework' && <Framework state={state} update={update} />}{state.tab === 'certificates' && <Certificates state={state} update={update} />}{state.tab === 'permissions' && <Permissions state={state} update={update} />}{state.tab === 'audit' && <section className='card'><h2>Audit log</h2>{(state.audit || []).map((a, i) => <p key={i}>• {a}</p>)}</section>}</>;
+  const staff = coachSessionStaff(state);
+  const tabs = [
+    ...(staff?.groups === false ? [] : ['groups']),
+    ...(staff?.framework === false ? [] : ['framework']),
+    ...(staff?.certificates === false ? [] : ['certificates']),
+    'permissions',
+    'audit'
+  ];
+  const activeTab = tabs.includes(state.tab) ? state.tab : tabs[0] || 'audit';
+  return <><section className='hero compact-hero'><h1>Settings</h1></section><div className='tabs'>{tabs.map(t => <button key={t} className={activeTab === t ? 'on' : ''} onClick={() => update({ tab: t })}>{t === 'groups' ? 'criteria groups' : t}</button>)}</div>{activeTab === 'groups' && <Groups state={state} update={update} />}{activeTab === 'framework' && <Framework state={state} update={update} />}{activeTab === 'certificates' && <Certificates state={state} update={update} />}{activeTab === 'permissions' && <Permissions state={state} update={update} />}{activeTab === 'audit' && <section className='card'><h2>Audit log</h2>{(state.audit || []).map((a, i) => <p key={i}>• {a}</p>)}</section>}</>;
 }
 
 function Groups({ state, update }) {
