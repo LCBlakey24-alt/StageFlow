@@ -10,8 +10,7 @@ const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
 
 function todayWeekday() {
-  const index = new Date().getDay();
-  return index >= 1 && index <= 5 ? days[index - 1] : days[0];
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date().getDay()];
 }
 
 function readCoachSessionStaffId() {
@@ -102,8 +101,10 @@ function timeToMinutes(time) {
   return ((Number.isFinite(h) ? h : 0) * 60) + (Number.isFinite(m) ? m : 0);
 }
 function formatTime(total) {
-  const hh = String(Math.floor(total / 60)).padStart(2, '0');
-  const mm = String(total % 60).padStart(2, '0');
+  const minutesInDay = 24 * 60;
+  const safeTotal = ((Number(total) % minutesInDay) + minutesInDay) % minutesInDay;
+  const hh = String(Math.floor(safeTotal / 60)).padStart(2, '0');
+  const mm = String(safeTotal % 60).padStart(2, '0');
   return `${hh}:${mm}`;
 }
 function addMinutes(time, minutes) { return formatTime(timeToMinutes(time) + (Number(minutes) || 0)); }
@@ -382,7 +383,10 @@ function App() {
       {activeStaff && <button className='btn' onClick={lockStaff}>Lock</button>}
     </div>
     <div className='wrap'>
-      <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list', active: screen === 'timetable' ? state.active : '' })}>{screen[0].toUpperCase()}</button>)}</nav>
+      <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => {
+        const label = screen === 'reports' ? 'Progress' : screen[0].toUpperCase() + screen.slice(1);
+        return <button key={screen} className={state.screen === screen ? 'on' : ''} onClick={() => update({ screen, step: 'list', active: screen === 'timetable' ? state.active : '' })}>{label}</button>;
+      })}</nav>
       <main>
         {needsUnlock ? <CoachPinGate state={state} onUnlock={unlockStaff} /> : <>
           {state.screen === 'home' && (!activeStaff
@@ -634,12 +638,13 @@ function CoachLessonBar({ state, lesson, update }) {
   const isStarted = !!lesson.startedAt && !isDone;
 
   function openLesson() {
-    update({
-      lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, startedAt: item.startedAt || new Date().toISOString() } : item),
+    update(current => ({
+      ...current,
+      lessons: current.lessons.map(item => item.id === lesson.id ? { ...item, startedAt: item.startedAt || new Date().toISOString() } : item),
       active: lesson.id,
       currentDay: lessonDay(lesson),
       step: 'register'
-    });
+    }));
   }
 
   return <button className={'coach-lesson-bar ' + (isDone ? 'done' : isStarted ? 'started' : '')} onClick={openLesson}>
@@ -920,6 +925,18 @@ function LessonCard({ state, update, lesson }) {
   return <section className='card lesson'><div className='time'>{lesson.time}</div><div><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {lesson.school} · {lesson.year}</p><span className='pill'>{groupLabel(state, lesson)}</span><span className='pill'>{swimmers.length} learners</span><span className='pill'>{groupCriteria(state, lesson).length} criteria</span></div><div className='score-buttons'><button className='btn' onClick={() => update({ active: lesson.id, step: 'edit' })}>Edit</button><button className='btn org' onClick={() => update({ active: lesson.id, step: 'register' })}>Open</button></div></section>;
 }
 
+function MissingLesson({ update }) {
+  return <>
+    <section className='card'>
+      <h2>Session no longer available</h2>
+      <p className='muted'>This saved session may have been removed or changed. Return to the timetable and open it again.</p>
+    </section>
+    <div className='footer'>
+      <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list', active: '' })}>Back to timetable</button>
+    </div>
+  </>;
+}
+
 function Lesson({ state, update, lesson }) {
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
@@ -965,7 +982,7 @@ function LessonSetup({ state, update, lesson }) {
   }
   return <>
     <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Select label='Coach' value={lesson.coach || ''} onChange={v => patchLesson({ coach: v })} options={staffOptions} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
-    <section className='card'><h2>Criteria preview</h2><p className='muted'>{groupLabel(state, lesson)}</p>{criteria.length ? criteria.map(c => <div className='folder' key={c}>• {c}</div>) : <p className='muted'>This session is National Curriculum only.</p>}</section>
+    <section className='card'><h2>Criteria preview</h2><p className='muted'>{groupLabel(state, lesson)}</p>{criteria.length ? criteria.map(c => <div className='folder' key={c}>• {c}</div>) : <p className='muted'>{noCriteriaLabel(lesson)}</p>}</section>
     <div className='footer'><button className='btn' onClick={() => update({ step: 'list' })}>Back to timetable</button><button className='btn' onClick={deleteLesson}>Delete</button><button className='btn org' onClick={() => update({ step: 'register' })}>Register learners</button></div>
   </>;
 }
