@@ -5,6 +5,7 @@ import './styles/calendar-overlay.css';
 import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
+import { StageFlowAccountGate } from './lib/accountAuth.jsx';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
@@ -26,6 +27,14 @@ function clearCoachSessionStaffId() {
 }
 
 function coachSessionStaff(state) {
+  try {
+    const linked = window.sessionStorage.getItem('stageflow-account-staff');
+    if (linked) {
+      const account = JSON.parse(linked);
+      if (account?.id && account?.name && account?.role) return account;
+    }
+  } catch {}
+
   const id = readCoachSessionStaffId();
   return (state.staff || []).find(staff => staff.id === id) || null;
 }
@@ -329,7 +338,7 @@ class StageFlowErrorBoundary extends React.Component {
   }
 }
 
-function App() {
+function App({ accountMode = false, onAccountSignOut = null }) {
   const [state, setState] = useState(() => loadInitialAppState());
   const [hydroStatus, setHydroStatus] = useState('idle');
   const [authVersion, setAuthVersion] = useState(0);
@@ -391,7 +400,7 @@ function App() {
   return <>
     <div className='top'>
       <div className='brand'>Stage Flow</div>
-      {activeStaff && <button className='btn' onClick={lockStaff}>Lock</button>}
+      {activeStaff && <button className='btn' onClick={accountMode && onAccountSignOut ? onAccountSignOut : lockStaff}>{accountMode ? 'Sign out' : 'Lock'}</button>}
     </div>
     <div className='wrap'>
       <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => {
@@ -1666,4 +1675,10 @@ function Distance({ label, value, onChange }) {
   return <Select label={label} value={value || '0m'} onChange={onChange} options={distances.map(x => ({ value: x, label: x }))} />;
 }
 
-createRoot(document.getElementById('root')).render(<StageFlowErrorBoundary><App /></StageFlowErrorBoundary>);
+createRoot(document.getElementById('root')).render(
+  <StageFlowErrorBoundary>
+    <StageFlowAccountGate>
+      {({ accountMode, signOut }) => <App accountMode={accountMode} onAccountSignOut={signOut} />}
+    </StageFlowAccountGate>
+  </StageFlowErrorBoundary>
+);
