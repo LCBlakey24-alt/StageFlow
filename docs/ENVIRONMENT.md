@@ -28,3 +28,10 @@ Only publishable/anon credentials belong in Vite frontend variables. Never put a
 ## Email
 
 For production auth mail, connect Supabase Auth to a transactional provider such as Resend rather than relying on the default development email service.
+
+
+## Current demo connection
+
+The current Stage Flow demo includes the project's public Supabase URL and publishable key as safe frontend fallbacks, so authentication can be tested without manually configuring Vercel variables. These values are intentionally public client credentials and are protected by database RLS.
+
+For production operations, Vercel environment variables should still be preferred so the publishable key can be rotated without a source-code change.
