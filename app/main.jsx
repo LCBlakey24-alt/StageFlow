@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/app.css';
-import './styles/calendar-overlay.css';
 import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCriteria, programmeAreas } from './data/demoData.js';
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
@@ -1476,14 +1475,16 @@ function Register({ state, update, lesson }) {
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
   const notesEnabled = lessonFeature(lesson, 'notes', true);
+  const evidenceEnabled = lessonFeature(lesson, 'evidence', true);
   const assessmentEnabled = lessonFeature(lesson, 'assessment', true);
   const hasAssessment = assessmentEnabled && (
     groupCriteria(state, lesson).length > 0 ||
     (lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only')
   );
-  const lessonNotes = notesEnabled
-    ? kids.flatMap(learner => (Array.isArray(learner.notes) ? learner.notes : []).map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name })))
-    : [];
+  const lessonNotes = kids.flatMap(learner =>
+    (Array.isArray(learner.notes) ? learner.notes : [])
+      .map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name }))
+  );
 
   const occurrenceDate = state.activeOccurrenceDate || localDateKey();
 
@@ -1519,7 +1520,7 @@ function Register({ state, update, lesson }) {
       <div className='register-list'>
         {kids.map(p => {
           const noteCount = Array.isArray(p.notes) ? p.notes.length : 0;
-          const showNoteButton = notesEnabled && (noteCount > 0 || !coachOnly);
+          const showNoteButton = noteCount > 0 || notesEnabled || evidenceEnabled;
           return <div className='register-person-wrap' key={p.id}>
             <div className='register-person'>
               <div className='register-person-main'>
@@ -1536,7 +1537,19 @@ function Register({ state, update, lesson }) {
               </select>
               {!coachOnly && <button className='register-remove' onClick={() => removeLearner(p.id)}>Remove</button>}
             </div>
-            {openNotes === p.id && <LearnerNotesPanel state={state} update={update} learner={p} canEdit={!coachOnly} onClose={() => setOpenNotes('')} />}
+            {openNotes === p.id && <>
+              <LearnerNotesPanel state={state} update={update} learner={p} canEdit={!coachOnly} onClose={() => setOpenNotes('')} />
+              {(notesEnabled || evidenceEnabled) && <section className='register-session-record'>
+                <LearnerSessionRecord
+                  lesson={lesson}
+                  learner={p}
+                  note={p.sessionNote || ''}
+                  onNote={value => changeLearner(p.id, { sessionNote: value })}
+                  allowNotes={notesEnabled}
+                  allowEvidence={evidenceEnabled}
+                />
+              </section>}
+            </>}
           </div>;
         })}
       </div>
@@ -1754,7 +1767,7 @@ function LearnerSessionRecord({ lesson, learner, note, onNote, allowNotes = true
 
   return <section className='learner-session-record'>
     <div className='session-record-head'>
-      <div><h3>Session notes & evidence</h3><p className='muted'>Saved to {learner.name} for this session.</p></div>
+      <div><h3>{allowNotes && allowEvidence ? 'Session notes & evidence' : allowNotes ? 'Session notes' : 'Session evidence'}</h3><p className='muted'>Saved to {learner.name} for this session.</p></div>
     </div>
     {allowNotes && <textarea
       className='session-note'
@@ -1803,12 +1816,17 @@ function SaveLesson({ state, update, lesson }) {
 }
 
 function HealthCheck({ state, update }) {
+  const cloudAccount = isCloudAccountSession();
   const items = useMemo(() => getHealthItems(state), [state]);
   const done = items.filter(item => item.done).length;
   const failed = items.filter(item => !item.done);
   const percent = Math.round((done / items.length) * 100);
   const testSteps = ['Open Home', 'Open Timetable', 'Create or edit a class/session', 'Choose a criteria group', 'Paste learners', 'Complete register', 'Assess by name', 'Assess by skill', 'Save session', 'Open Reports', 'Open Settings'];
-  return <><section className='hero'><p>Priority 1</p><h1>Stability health check</h1><p>{percent}% of automatic checks are passing.</p></section><div className='grid'><div className='card'><h2>{percent}%</h2><p className='muted'>Automatic stability score</p></div><div className='card'><h2>{done}/{items.length}</h2><p className='muted'>Checks passing</p></div><div className='card'><h2>{state.audit?.length || 0}</h2><p className='muted'>Audit entries</p></div></div><section className='card'><h2>{failed.length ? 'Needs checks' : 'Ready for manual sign-off'}</h2><p className='muted'>{failed.length ? 'Fix the warnings below before moving on.' : 'Run the manual test route once on your phone.'}</p></section><section className='card'><h2>✅ Passed</h2>{items.filter(item => item.done).map(item => <div className='folder' key={item.label}>✅ {item.label}<p className='muted'>{item.detail}</p></div>)}</section><section className='card'><h2>⚠️ Needs fixing</h2>{failed.length ? failed.map(item => <div className='folder' key={item.label}>⚠️ {item.label}<p className='muted'>{item.detail}</p></div>) : <div className='folder'>✅ Nothing currently flagged.</div>}</section><section className='card'><h2>Manual live test route</h2>{testSteps.map((step, index) => <div className='folder' key={step}>#{index + 1} {step}</div>)}</section><div className='footer'><button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset app data</button><button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Test timetable</button></div></>;
+  return <><section className='hero'><p>Priority 1</p><h1>Stability health check</h1><p>{percent}% of automatic checks are passing.</p></section><div className='grid'><div className='card'><h2>{percent}%</h2><p className='muted'>Automatic stability score</p></div><div className='card'><h2>{done}/{items.length}</h2><p className='muted'>Checks passing</p></div><div className='card'><h2>{state.audit?.length || 0}</h2><p className='muted'>Audit entries</p></div></div><section className='card'><h2>{failed.length ? 'Needs checks' : 'Ready for manual sign-off'}</h2><p className='muted'>{failed.length ? 'Fix the warnings below before moving on.' : 'Run the manual test route once on your phone.'}</p></section><section className='card'><h2>✅ Passed</h2>{items.filter(item => item.done).map(item => <div className='folder' key={item.label}>✅ {item.label}<p className='muted'>{item.detail}</p></div>)}</section><section className='card'><h2>⚠️ Needs fixing</h2>{failed.length ? failed.map(item => <div className='folder' key={item.label}>⚠️ {item.label}<p className='muted'>{item.detail}</p></div>) : <div className='folder'>✅ Nothing currently flagged.</div>}</section><section className='card'><h2>Manual live test route</h2>{testSteps.map((step, index) => <div className='folder' key={step}>#{index + 1} {step}</div>)}</section><div className='footer'>{cloudAccount
+  ? <button className='btn' onClick={() => location.reload()}>Reload cloud workspace</button>
+  : <button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset demo data</button>}
+  <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Test timetable</button>
+</div></>;
 }
 function getHealthItems(state) {
   const activeExists = !state.active || state.lessons.some(l => l.id === state.active);

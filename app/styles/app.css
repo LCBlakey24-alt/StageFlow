@@ -434,3 +434,12 @@ textarea{min-height:92px;resize:vertical}
 .register-date{font-size:12px;margin-top:3px}
 .coach-week-day-head>div{min-width:0}
 .coach-week-day-head small{display:block;margin-top:2px;color:var(--muted);font-size:10px;font-weight:850;white-space:nowrap}
+
+/* Mobile navigation uses the real React label so permission-based menus cannot be mislabeled. */
+@media(max-width:850px){
+  .rail{grid-template-columns:repeat(auto-fit,minmax(70px,1fr))}
+  .rail button{font-size:10px;padding:0 6px;line-height:1.05}
+  .rail button:after{content:none!important;display:none!important}
+}
+.register-session-record{margin-top:2px}
+.register-session-record .learner-session-record{margin-top:0;border-top:0;padding-top:0}
