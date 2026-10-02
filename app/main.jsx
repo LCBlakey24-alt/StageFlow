@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/app.css';
 import './styles/calendar-overlay.css';
@@ -6,6 +6,7 @@ import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCrit
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
 import { StageFlowAccountGate, StaffAccountsPanel } from './lib/accountAuth.jsx';
+import { createOrganisationWorkspace, loadOrganisationStaff, loadOrganisationWorkspace, mergeWorkspaceSnapshot, saveOrganisationWorkspace, workspaceSnapshot } from './lib/cloudWorkspace.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
@@ -26,14 +27,24 @@ function clearCoachSessionStaffId() {
   try { window.sessionStorage.removeItem(COACH_SESSION_KEY); } catch {}
 }
 
-function coachSessionStaff(state) {
+function linkedAccountStaff() {
   try {
     const linked = window.sessionStorage.getItem('stageflow-account-staff');
-    if (linked) {
-      const account = JSON.parse(linked);
-      if (account?.id && account?.name && account?.role) return account;
-    }
-  } catch {}
+    if (!linked) return null;
+    const account = JSON.parse(linked);
+    return account?.id && account?.name && account?.role ? account : null;
+  } catch {
+    return null;
+  }
+}
+
+function isCloudAccountSession() {
+  return !!linkedAccountStaff()?.accountStaffId;
+}
+
+function coachSessionStaff(state) {
+  const account = linkedAccountStaff();
+  if (account) return account;
 
   const id = readCoachSessionStaffId();
   return (state.staff || []).find(staff => staff.id === id) || null;
@@ -338,10 +349,17 @@ class StageFlowErrorBoundary extends React.Component {
   }
 }
 
-function App({ accountMode = false, onAccountSignOut = null }) {
+function App({ accountMode = false, accountStaff = null, onAccountSignOut = null }) {
   const [state, setState] = useState(() => loadInitialAppState());
   const [hydroStatus, setHydroStatus] = useState('idle');
   const [authVersion, setAuthVersion] = useState(0);
+  const [cloudStatus, setCloudStatus] = useState(accountMode ? 'loading' : 'local');
+  const [cloudMessage, setCloudMessage] = useState('');
+  const cloudRevisionRef = useRef(0);
+  const cloudReadyRef = useRef(!accountMode);
+  const skipCloudSaveRef = useRef(true);
+  const cloudSaveQueueRef = useRef(Promise.resolve());
+  const accountOrgId = accountStaff?.organisationId || '';
 
   async function enableHydrotherapy() {
     if (hydroStatus === 'loading' || hydroStatus === 'enabled') return;
@@ -358,10 +376,114 @@ function App({ accountMode = false, onAccountSignOut = null }) {
   function update(next) {
     setState(current => {
       const newState = typeof next === 'function' ? next(current) : { ...current, ...next };
-      saveAppState(newState);
+      if (!accountMode) saveAppState(newState);
       return newState;
     });
   }
+
+  useEffect(() => {
+    if (!accountMode || !accountOrgId) {
+      cloudReadyRef.current = !accountMode;
+      setCloudStatus(accountMode ? 'loading' : 'local');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const initialSnapshot = workspaceSnapshot(state);
+    cloudReadyRef.current = false;
+    skipCloudSaveRef.current = true;
+    setCloudStatus('loading');
+    setCloudMessage('');
+
+    async function bootCloudWorkspace() {
+      try {
+        const [remote, organisationStaff] = await Promise.all([
+          loadOrganisationWorkspace(accountOrgId),
+          loadOrganisationStaff(accountOrgId)
+        ]);
+
+        if (cancelled) return;
+
+        let shared = remote?.state || null;
+        let revision = Number(remote?.revision) || 0;
+
+        if (!shared) {
+          const created = await createOrganisationWorkspace(accountOrgId, initialSnapshot);
+          if (cancelled) return;
+          shared = created.state;
+          revision = created.revision;
+        }
+
+        cloudRevisionRef.current = revision;
+        setState(current => ({
+          ...mergeWorkspaceSnapshot(current, shared),
+          staff: organisationStaff.length ? organisationStaff : current.staff
+        }));
+
+        // Authenticated organisation data should live in Supabase, not the
+        // unscoped browser demo cache.
+        clearAppState();
+        cloudReadyRef.current = true;
+        skipCloudSaveRef.current = true;
+        setCloudStatus('ready');
+      } catch (error) {
+        console.error('Stage Flow workspace failed to load', error);
+        if (cancelled) return;
+        cloudReadyRef.current = false;
+        setCloudMessage(error?.message || 'Could not load the organisation workspace.');
+        setCloudStatus('error');
+      }
+    }
+
+    bootCloudWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountMode, accountOrgId]);
+
+  useEffect(() => {
+    if (!accountMode || !accountOrgId || !cloudReadyRef.current) return undefined;
+    if (skipCloudSaveRef.current) {
+      skipCloudSaveRef.current = false;
+      return undefined;
+    }
+
+    const snapshot = workspaceSnapshot(state);
+    const timer = window.setTimeout(() => {
+      cloudSaveQueueRef.current = cloudSaveQueueRef.current
+        .then(async () => {
+          if (!cloudReadyRef.current) return;
+          setCloudStatus('saving');
+          setCloudMessage('');
+          const saved = await saveOrganisationWorkspace(accountOrgId, snapshot, cloudRevisionRef.current);
+          if (saved.conflict) {
+            cloudReadyRef.current = false;
+            setCloudStatus('conflict');
+            setCloudMessage('Another device saved newer Stage Flow data. Reload to use the latest version.');
+            return;
+          }
+          cloudRevisionRef.current = saved.revision;
+          setCloudStatus('ready');
+        })
+        .catch(error => {
+          console.error('Stage Flow workspace failed to save', error);
+          setCloudMessage(error?.message || 'Changes could not be synced.');
+          setCloudStatus('error');
+        });
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    accountMode,
+    accountOrgId,
+    state.lessons,
+    state.learners,
+    state.framework,
+    state.certificates,
+    state.pack,
+    state.audit
+  ]);
+
 
   function unlockStaff(id) {
     saveCoachSessionStaffId(id);
@@ -375,8 +497,26 @@ function App({ accountMode = false, onAccountSignOut = null }) {
   }
 
   void authVersion;
+
+  if (accountMode && cloudStatus === 'loading') {
+    return <div className='account-loading'>Loading your Stage Flow workspace…</div>;
+  }
+
+  if (accountMode && cloudStatus === 'error' && !cloudReadyRef.current) {
+    return <div className='account-gate'>
+      <section className='card account-unlinked'>
+        <h1>Workspace unavailable</h1>
+        <p className='muted'>{cloudMessage || 'Stage Flow could not securely load this organisation.'}</p>
+        <div className='app-error-actions'>
+          <button className='btn org' onClick={() => window.location.reload()}>Try again</button>
+          {onAccountSignOut && <button className='btn' onClick={onAccountSignOut}>Sign out</button>}
+        </div>
+      </section>
+    </div>;
+  }
+
   const lesson = state.lessons.find(l => l.id === state.active);
-  const activeStaff = coachSessionStaff(state);
+  const activeStaff = accountMode && accountStaff ? accountStaff : coachSessionStaff(state);
   const coachOnly = !!activeStaff && activeStaff.role !== 'Admin';
   const protectedScreen = state.screen !== 'home';
   const needsUnlock = protectedScreen && !activeStaff;
@@ -400,8 +540,15 @@ function App({ accountMode = false, onAccountSignOut = null }) {
   return <>
     <div className='top'>
       <div className='brand'>Stage Flow</div>
-      {activeStaff && <button className='btn' onClick={accountMode && onAccountSignOut ? onAccountSignOut : lockStaff}>{accountMode ? 'Sign out' : 'Lock'}</button>}
+      <div className='top-actions'>
+        {accountMode && <span className={'cloud-sync-status ' + cloudStatus}>{cloudStatus === 'saving' ? 'Saving…' : cloudStatus === 'conflict' ? 'Sync conflict' : cloudStatus === 'error' ? 'Sync issue' : 'Cloud synced'}</span>}
+        {activeStaff && <button className='btn' onClick={accountMode && onAccountSignOut ? onAccountSignOut : lockStaff}>{accountMode ? 'Sign out' : 'Lock'}</button>}
+      </div>
     </div>
+    {accountMode && cloudStatus === 'conflict' && <div className='cloud-conflict-banner'>
+      <span>{cloudMessage}</span>
+      <button className='btn' onClick={() => window.location.reload()}>Reload latest</button>
+    </div>}
     <div className='wrap'>
       <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => {
         const label = screen === 'reports' ? 'Progress' : screen[0].toUpperCase() + screen.slice(1);
@@ -1308,6 +1455,7 @@ function Assess({ state, update, lesson }) {
 }
 
 function LearnerSessionRecord({ lesson, learner, note, onNote }) {
+  const cloudAccount = isCloudAccountSession();
   const [evidence, setEvidence] = useState([]);
   const [evidenceError, setEvidenceError] = useState('');
   const [loadingEvidence, setLoadingEvidence] = useState(true);
@@ -1327,6 +1475,12 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
 
   useEffect(() => {
     let active = true;
+    if (cloudAccount) {
+      setEvidence([]);
+      setEvidenceError('');
+      setLoadingEvidence(false);
+      return () => { active = false; };
+    }
     setLoadingEvidence(true);
     setEvidenceError('');
     listLocalEvidence(lesson.id, learner.id)
@@ -1343,7 +1497,7 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
     return () => {
       active = false;
     };
-  }, [lesson.id, learner.id]);
+  }, [lesson.id, learner.id, cloudAccount]);
 
   async function addEvidence(event) {
     const files = Array.from(event.target.files || []);
@@ -1379,23 +1533,25 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
       onChange={event => onNote(event.target.value)}
       placeholder='Add a quick note about progress, support, confidence or what to try next…'
     />
-    <div className='evidence-actions'>
-      <label className='btn evidence-upload'>
-        Add photo / video
-        <input type='file' accept='image/*,video/*' multiple onChange={addEvidence} />
-      </label>
-      <span>Stored on this device only</span>
-    </div>
-    {evidenceError && <p className='evidence-error'>{evidenceError}</p>}
-    {loadingEvidence ? <p className='muted'>Loading evidence…</p> : evidence.length > 0 && <div className='evidence-grid'>
+    {cloudAccount
+      ? <p className='evidence-cloud-pending'>Photo/video evidence is temporarily disabled for real accounts until secure organisation storage is connected.</p>
+      : <div className='evidence-actions'>
+          <label className='btn evidence-upload'>
+            Add photo / video
+            <input type='file' accept='image/*,video/*' multiple onChange={addEvidence} />
+          </label>
+          <span>Stored on this device only</span>
+        </div>}
+    {!cloudAccount && evidenceError && <p className='evidence-error'>{evidenceError}</p>}
+    {!cloudAccount && (loadingEvidence ? <p className='muted'>Loading evidence…</p> : evidence.length > 0 && <div className='evidence-grid'>
       {evidence.map(item => <article className='evidence-item' key={item.id}>
         {String(item.type).startsWith('video/')
           ? <video src={item.url} controls preload='metadata' />
           : <img src={item.url} alt={item.name || 'Session evidence'} />}
         <div><span>{item.name}</span><button onClick={() => removeEvidence(item)}>Remove</button></div>
       </article>)}
-    </div>}
-    <p className='evidence-safety'>Demo/local evidence only — use example children, not real pupil photos or videos yet.</p>
+    </div>)}
+    <p className='evidence-safety'>{cloudAccount ? 'Notes sync with the organisation workspace. Media will stay disabled until secure cloud storage and retention controls are ready.' : 'Demo/local evidence only — use example children, not real pupil photos or videos yet.'}</p>
   </section>;
 }
 
@@ -1618,6 +1774,8 @@ function Certificates({ state, update }) {
   return <section className='card'><h2>Certificate templates</h2><p className='muted'>Certificate generation is still demo-level, but it now points at criteria completion rather than initial placement.</p><button className='btn org' onClick={addCert}>+ Add certificate template</button>{state.certificates.map(c => <div className='card' key={c.id}><Field label='Name' value={c.name} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, name: v } : x) })} /><Select label='Rule' value={c.rule} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, rule: v } : x) })} options={['Criteria group complete', 'National Curriculum achieved', 'Selected award only'].map(x => ({ value: x, label: x }))} /><Select label='Group by' value={c.groupBy} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, groupBy: v } : x) })} options={['Criteria group', 'School / venue', 'Award', 'All in one PDF'].map(x => ({ value: x, label: x }))} /></div>)}</section>;
 }
 function Permissions({ state, update }) {
+  const cloudAccount = isCloudAccountSession();
+
   function patchStaff(id, patch) {
     update({ staff: state.staff.map(person => person.id === id ? { ...person, ...patch } : person) });
   }
@@ -1634,7 +1792,7 @@ function Permissions({ state, update }) {
 
   return <>
   <StaffAccountsPanel />
-  <section className='card'>
+  {!cloudAccount && <section className='card'>
     <h2>Quick access codes</h2>
     <p className='muted'>Optional demo/poolside codes. Real account access uses the email login above.</p>
     <div className='staff-access-list'>
@@ -1665,7 +1823,7 @@ function Permissions({ state, update }) {
       })}
     </div>
     <p className='muted staff-code-note'>Quick codes are a convenience layer only. Email/password accounts are the real staff identity.</p>
-  </section>
+  </section>}
   </>;
 }
 
@@ -1682,7 +1840,7 @@ function Distance({ label, value, onChange }) {
 createRoot(document.getElementById('root')).render(
   <StageFlowErrorBoundary>
     <StageFlowAccountGate>
-      {({ accountMode, signOut }) => <App accountMode={accountMode} onAccountSignOut={signOut} />}
+      {({ accountMode, signOut, staff }) => <App accountMode={accountMode} accountStaff={staff} onAccountSignOut={signOut} />}
     </StageFlowAccountGate>
   </StageFlowErrorBoundary>
 );

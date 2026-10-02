@@ -384,3 +384,12 @@ textarea{min-height:92px;resize:vertical}
 .staff-account-row>div{display:grid;gap:2px}
 .staff-account-row small{color:var(--muted);font-weight:800;overflow-wrap:anywhere}
 @media(max-width:600px){.staff-account-row{grid-template-columns:1fr}.staff-account-row .pill{justify-self:start}}
+
+.top-actions{display:flex;align-items:center;gap:9px}
+.cloud-sync-status{display:inline-flex;align-items:center;border:1px solid var(--line);background:#f8fbff;color:var(--muted);border-radius:999px;padding:6px 9px;font-size:11px;font-weight:1000;white-space:nowrap}
+.cloud-sync-status.saving{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
+.cloud-sync-status.error,.cloud-sync-status.conflict{color:#991b1b;background:#fff1f2;border-color:#fecaca}
+.cloud-conflict-banner{max-width:1280px;margin:10px auto 0;padding:9px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #fecaca;background:#fff1f2;color:#991b1b;border-radius:14px;font-weight:850}
+.cloud-conflict-banner .btn{flex:0 0 auto}
+.evidence-cloud-pending{margin-top:10px;border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;border-radius:13px;padding:10px 11px;font-size:12px;font-weight:850}
+@media(max-width:600px){.cloud-sync-status{display:none}.cloud-conflict-banner{margin:8px 10px 0;padding:8px 10px;align-items:stretch;flex-direction:column}.cloud-conflict-banner .btn{width:100%}}
