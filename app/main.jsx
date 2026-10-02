@@ -410,11 +410,24 @@ function noCriteriaLabel(lesson) {
   return usesNationalCurriculum ? 'National Curriculum only' : 'No assessment criteria';
 }
 
+function nationalCurriculumProgress(learner) {
+  return nationalCurriculum.filter(item => !!learner?.nc?.[item]).length;
+}
+
 function completionText(state, lesson, learner) {
   const criteria = learnerCriteria(state, lesson, learner);
-  if (!criteria.length) return noCriteriaLabel(lesson);
+  const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only';
+  const ncPassed = usesNationalCurriculum ? nationalCurriculumProgress(learner) : 0;
+
+  if (!criteria.length) {
+    if (usesNationalCurriculum) return `${ncPassed}/${nationalCurriculum.length} National Curriculum`;
+    return noCriteriaLabel(lesson);
+  }
+
   const passed = criteria.filter(c => learner?.res?.[c] === 'pass').length;
-  return `${passed}/${criteria.length} criteria passed`;
+  return usesNationalCurriculum
+    ? `${passed}/${criteria.length} criteria · ${ncPassed}/${nationalCurriculum.length} NC`
+    : `${passed}/${criteria.length} criteria passed`;
 }
 
 function isMarkedAssessment(value) {
@@ -1914,7 +1927,12 @@ function Reports({ state, update }) {
     const criteria = groupCriteria(state, lesson);
     const complete = swimmers.filter(p => {
       const applicable = learnerCriteria(state, lesson, p);
-      return applicable.length > 0 && applicable.every(c => p.res?.[c] === 'pass');
+      const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
+      const criteriaComplete = applicable.length
+        ? applicable.every(c => p.res?.[c] === 'pass')
+        : lesson.mode === 'National Curriculum only';
+      const ncComplete = !usesNationalCurriculum || nationalCurriculum.every(item => !!p.nc?.[item]);
+      return criteriaComplete && ncComplete;
     }).length;
     return { lesson, swimmers, criteria, complete };
   });
