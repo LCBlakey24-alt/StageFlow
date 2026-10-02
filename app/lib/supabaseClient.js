@@ -12,10 +12,23 @@ const publishableKey = String(
 
 export const supabaseConfigured = Boolean(url && publishableKey);
 
+const sessionStorageAdapter = typeof window !== 'undefined' ? {
+  getItem(key) {
+    try { return window.sessionStorage.getItem(key); } catch { return null; }
+  },
+  setItem(key, value) {
+    try { window.sessionStorage.setItem(key, value); } catch {}
+  },
+  removeItem(key) {
+    try { window.sessionStorage.removeItem(key); } catch {}
+  }
+} : undefined;
+
 export const supabase = supabaseConfigured
   ? createClient(url, publishableKey, {
       auth: {
         persistSession: true,
+        storage: sessionStorageAdapter,
         autoRefreshToken: true,
         detectSessionInUrl: true
       }
