@@ -132,10 +132,67 @@ Deno.serve(async (req: Request) => {
 
       const oldRecords = currentState.sessionRecords && typeof currentState.sessionRecords === "object" ? currentState.sessionRecords : {};
       const newRecords = nextState.sessionRecords && typeof nextState.sessionRecords === "object" ? nextState.sessionRecords : {};
+      const currentLearnersById = new Map(oldLearners.map((learner: any) => [String(learner.id), learner]));
+      const allowedRecordKeys = new Set(["lessonId", "date", "startedAt", "completedAt", "learners"]);
+      const allowedSnapshotKeys = new Set(["att", "res", "dist", "nc", "sessionNote"]);
+
       for (const key of changedKeys(oldRecords, newRecords)) {
-        const record: any = newRecords[key] || oldRecords[key] || {};
-        const lessonId = String(record.lessonId || key.split("::")[0] || "");
-        if (!allowedLessons.has(lessonId)) return json({ error: "Coach accounts can only save occurrences for assigned sessions" }, 403);
+        const oldRecord: any = oldRecords[key] || null;
+        const newRecord: any = newRecords[key] || null;
+        if (!newRecord) return json({ error: "Coach accounts cannot delete session history" }, 403);
+
+        const [keyLessonId, keyDate] = String(key).split("::");
+        const lessonId = String(newRecord.lessonId || keyLessonId || "");
+        const assignedLesson: any = allowedLessons.get(lessonId);
+        if (!assignedLesson) return json({ error: "Coach accounts can only save occurrences for assigned sessions" }, 403);
+        if (keyLessonId !== lessonId) return json({ error: "Session history lesson mismatch" }, 403);
+        if (newRecord.date && keyDate && String(newRecord.date) !== keyDate) {
+          return json({ error: "Session history date mismatch" }, 403);
+        }
+
+        for (const field of Object.keys(newRecord)) {
+          if (!allowedRecordKeys.has(field)) return json({ error: `Unsupported session history field: ${field}` }, 403);
+        }
+
+        const oldSnapshots = oldRecord?.learners && typeof oldRecord.learners === "object" ? oldRecord.learners : {};
+        const newSnapshots = newRecord.learners && typeof newRecord.learners === "object" ? newRecord.learners : {};
+
+        for (const learnerId of changedKeys(oldSnapshots, newSnapshots)) {
+          const oldSnapshot: any = oldSnapshots[learnerId] || null;
+          const newSnapshot: any = newSnapshots[learnerId] || null;
+          if (!newSnapshot) return json({ error: "Coach accounts cannot delete learner history" }, 403);
+
+          const currentLearner: any = currentLearnersById.get(String(learnerId));
+          if (!currentLearner || String(currentLearner.lesson || "") !== lessonId) {
+            return json({ error: "Session history contains a learner outside the assigned session" }, 403);
+          }
+          if (permissions.learners === false) return json({ error: "Learner access is disabled for this account" }, 403);
+
+          for (const field of Object.keys(newSnapshot)) {
+            if (!allowedSnapshotKeys.has(field)) return json({ error: `Unsupported learner history field: ${field}` }, 403);
+          }
+
+          const baseline = oldSnapshot || {
+            att: currentLearner.att,
+            res: currentLearner.res,
+            dist: currentLearner.dist,
+            nc: currentLearner.nc,
+            sessionNote: currentLearner.sessionNote
+          };
+
+          if (assignedLesson?.features?.notes === false && !same(baseline?.sessionNote, newSnapshot?.sessionNote)) {
+            return json({ error: "Notes are disabled for this session" }, 403);
+          }
+
+          const assessmentChanged =
+            !same(baseline?.res, newSnapshot?.res) ||
+            !same(baseline?.dist, newSnapshot?.dist) ||
+            !same(baseline?.nc, newSnapshot?.nc);
+
+          if (assessmentChanged && (permissions.assess === false || assignedLesson?.features?.assessment === false)) {
+            return json({ error: "Assessment is disabled for this account or session" }, 403);
+          }
+        }
       }
     }
 
