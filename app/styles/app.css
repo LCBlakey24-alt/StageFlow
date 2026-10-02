@@ -407,3 +407,15 @@ textarea{min-height:92px;resize:vertical}
   .wrap{max-width:1580px}
   .session-stage-row{grid-template-columns:170px minmax(260px,1fr) minmax(220px,.75fr)}
 }
+
+.session-tools-card{border-top:5px solid var(--blue)}
+.session-tool-toggles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.session-tool-toggle{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:9px;border:1px solid var(--line);background:#fff;border-radius:15px;padding:10px 11px;text-transform:none;letter-spacing:0;cursor:pointer;position:relative;overflow:hidden}
+.session-tool-toggle:after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--orange);opacity:.45}
+.session-tool-toggle.on{background:#f8fbff;border-color:#bfdbfe}
+.session-tool-toggle.on:after{opacity:1}
+.session-tool-toggle input{width:18px;height:18px;margin:0;accent-color:var(--navy)}
+.session-tool-toggle span{display:grid;gap:2px}
+.session-tool-toggle strong{font-size:13px;color:var(--navy)}
+.session-tool-toggle small{font-size:11px;color:var(--muted);font-weight:800;line-height:1.25}
+@media(max-width:850px){.session-tool-toggles{grid-template-columns:1fr}}

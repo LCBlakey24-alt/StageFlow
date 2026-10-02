@@ -143,6 +143,11 @@ export function normaliseState(saved, fallback) {
       name: lesson.name || 'Untitled lesson',
       groupTemplateId: defaultGroupForProgramme(programme, framework, lesson.groupTemplateId),
       mode: lesson.mode || framework.mode || 'Stages + National Curriculum',
+      features: {
+        assessment: lesson.features?.assessment !== false,
+        notes: lesson.features?.notes !== false,
+        evidence: lesson.features?.evidence !== false
+      },
       startedAt: lesson.startedAt || '',
       completedAt: lesson.completedAt || ''
     };

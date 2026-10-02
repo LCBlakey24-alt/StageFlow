@@ -93,7 +93,7 @@ const starter = {
   draft: null,
   currentDay: 'Tuesday',
   timetableFilter: 'All',
-  lessons: demoLessons.map(l => ({ day: 'Tuesday', duration: 30, className: '', coach: '', groupTemplateId: defaultGroupForProgramme(l.programme || demoFramework.area || 'School Swimming', demoFramework.groupTemplates), programme: normaliseProgrammeName(l.programme || demoFramework.area || 'School Swimming'), ...l, programme: normaliseProgrammeName(l.programme || demoFramework.area || 'School Swimming') })),
+  lessons: demoLessons.map(l => ({ day: 'Tuesday', duration: 30, className: '', coach: '', groupTemplateId: defaultGroupForProgramme(l.programme || demoFramework.area || 'School Swimming', demoFramework.groupTemplates), programme: normaliseProgrammeName(l.programme || demoFramework.area || 'School Swimming'), features: { assessment: true, notes: true, evidence: true }, ...l, programme: normaliseProgrammeName(l.programme || demoFramework.area || 'School Swimming') })),
   learners: demoLearners,
   framework: demoFramework,
   certificates: [
@@ -208,8 +208,13 @@ function groupStages(state, lesson) {
 function criteriaForStage(state, stage) {
   return state.framework?.criteria?.[stage] || stageCriteria?.[stage] || [];
 }
+function lessonFeature(lesson, key, fallback = true) {
+  if (!lesson?.features || typeof lesson.features !== 'object' || lesson.features[key] === undefined) return fallback;
+  return lesson.features[key] !== false;
+}
+
 function groupCriteria(state, lesson) {
-  if (!lesson || lesson.mode === 'National Curriculum only') return [];
+  if (!lesson || !lessonFeature(lesson, 'assessment', true) || lesson.mode === 'National Curriculum only') return [];
   const stages = groupStages(state, lesson);
   return [...new Set(stages.flatMap(stage => criteriaForStage(state, stage)))];
 }
@@ -244,6 +249,7 @@ function applyDistanceAutoPass(state, currentResults, stroke, metres) {
   return next;
 }
 function noCriteriaLabel(lesson) {
+  if (!lessonFeature(lesson, 'assessment', true)) return 'Assessment off';
   const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only';
   return usesNationalCurriculum ? 'National Curriculum only' : 'No assessment criteria';
 }
@@ -869,6 +875,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
   const [duration, setDuration] = useState(30);
   const [gap, setGap] = useState(0);
   const [venue, setVenue] = useState(defaultSchoolForProgramme('School Swimming'));
+  const [features, setFeatures] = useState({ assessment: true, notes: true, evidence: false });
 
   function typeLabel(value) {
     if (value === 'School Swimming') return 'Swimming';
@@ -964,7 +971,8 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
         name: count > 1 ? `${label} · Session ${index + 1}` : label,
         programme,
         groupTemplateId: groupId,
-        mode: programme === 'School Swimming' ? 'Stages + National Curriculum' : 'Stages only'
+        mode: programme === 'School Swimming' ? 'Stages + National Curriculum' : 'Stages only',
+        features: { ...features }
       };
     });
 
@@ -1022,8 +1030,22 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     {step === 2 && <div className='wizard-stage-assignments'>
       <div className='wizard-shared-fields'>
         <Field label='School / venue' value={venue} onChange={setVenue} />
+        <div className='session-tool-toggles'>
+          <label className={'session-tool-toggle ' + (features.assessment ? 'on' : '')}>
+            <input type='checkbox' checked={features.assessment} onChange={event => setFeatures(current => ({ ...current, assessment: event.target.checked }))} />
+            <span><strong>Assessment</strong><small>Show criteria and progress marking</small></span>
+          </label>
+          <label className={'session-tool-toggle ' + (features.notes ? 'on' : '')}>
+            <input type='checkbox' checked={features.notes} onChange={event => setFeatures(current => ({ ...current, notes: event.target.checked }))} />
+            <span><strong>Notes</strong><small>Allow staff notes for learners</small></span>
+          </label>
+          <label className={'session-tool-toggle ' + (features.evidence ? 'on' : '')}>
+            <input type='checkbox' checked={features.evidence} onChange={event => setFeatures(current => ({ ...current, evidence: event.target.checked }))} />
+            <span><strong>Photo / video</strong><small>Configured now; secure cloud media is still disabled</small></span>
+          </label>
+        </div>
       </div>
-      <p className='wizard-question'>What is each session working on?</p>
+      <p className='wizard-question'>{features.assessment ? 'What is each session working on?' : 'Assign each session'}</p>
       <div className='session-stage-list'>
         {sessions.map((session, index) => <div className='session-stage-row' key={index}>
           <div className='session-stage-time'>
@@ -1050,7 +1072,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
       <button className='btn' disabled={step === 0} onClick={() => setStep(current => Math.max(0, current - 1))}>Back</button>
       {step < 2
         ? <button className='btn org' onClick={() => setStep(current => current + 1)}>Continue</button>
-        : <button className='btn org' disabled={!sessions.length || sessions.some(session => !session.stage)} onClick={createSessions}>Create {count} session{count === 1 ? '' : 's'}</button>}
+        : <button className='btn org' disabled={!sessions.length || (features.assessment && sessions.some(session => !session.stage))} onClick={createSessions}>Create {count} session{count === 1 ? '' : 's'}</button>}
     </div>
   </section>;
 }
@@ -1144,6 +1166,11 @@ function Lesson({ state, update, lesson }) {
 function LessonSetup({ state, update, lesson }) {
   const templateOptions = groupOptionsForLesson(state, lesson);
   const criteria = groupCriteria(state, lesson);
+  const featureState = {
+    assessment: lessonFeature(lesson, 'assessment', true),
+    notes: lessonFeature(lesson, 'notes', true),
+    evidence: lessonFeature(lesson, 'evidence', true)
+  };
   const staffOptions = [
     { value: '', label: 'Unassigned' },
     ...(state.staff || []).map(person => ({ value: person.name, label: `${person.name} · ${person.role}` }))
@@ -1171,6 +1198,20 @@ function LessonSetup({ state, update, lesson }) {
   }
   return <>
     <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Select label='Coach' value={lesson.coach || ''} onChange={v => patchLesson({ coach: v })} options={staffOptions} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
+    <section className='card session-tools-card'>
+      <h2>Session tools</h2>
+      <p className='muted'>Turn features on only when this session needs them.</p>
+      <div className='session-tool-toggles'>
+        {[
+          ['assessment', 'Assessment', 'Criteria and progress marking'],
+          ['notes', 'Notes', 'Staff notes for learners'],
+          ['evidence', 'Photo / video', 'Secure media capture when storage is enabled']
+        ].map(([key, label, detail]) => <label className={'session-tool-toggle ' + (featureState[key] ? 'on' : '')} key={key}>
+          <input type='checkbox' checked={featureState[key]} onChange={event => patchLesson({ features: { ...(lesson.features || {}), [key]: event.target.checked } })} />
+          <span><strong>{label}</strong><small>{detail}</small></span>
+        </label>)}
+      </div>
+    </section>
     <section className='card'><h2>Criteria preview</h2><p className='muted'>{groupLabel(state, lesson)}</p>{criteria.length ? criteria.map(c => <div className='folder' key={c}>• {c}</div>) : <p className='muted'>{noCriteriaLabel(lesson)}</p>}</section>
     <div className='footer'><button className='btn' onClick={() => update({ step: 'list' })}>Back to timetable</button><button className='btn' onClick={deleteLesson}>Delete</button><button className='btn org' onClick={() => update({ step: 'register' })}>Register learners</button></div>
   </>;
@@ -1248,7 +1289,15 @@ function Register({ state, update, lesson }) {
   const [showAllNotes, setShowAllNotes] = useState(false);
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
-  const lessonNotes = kids.flatMap(learner => (Array.isArray(learner.notes) ? learner.notes : []).map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name })));
+  const notesEnabled = lessonFeature(lesson, 'notes', true);
+  const assessmentEnabled = lessonFeature(lesson, 'assessment', true);
+  const hasAssessment = assessmentEnabled && (
+    groupCriteria(state, lesson).length > 0 ||
+    (lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only')
+  );
+  const lessonNotes = notesEnabled
+    ? kids.flatMap(learner => (Array.isArray(learner.notes) ? learner.notes : []).map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name })))
+    : [];
 
   function changeLearner(id, patch) {
     update(current => ({
@@ -1285,7 +1334,7 @@ function Register({ state, update, lesson }) {
       <div className='register-list'>
         {kids.map(p => {
           const noteCount = Array.isArray(p.notes) ? p.notes.length : 0;
-          const showNoteButton = noteCount > 0 || !coachOnly;
+          const showNoteButton = notesEnabled && (noteCount > 0 || !coachOnly);
           return <div className='register-person-wrap' key={p.id}>
             <div className='register-person'>
               <div className='register-person-main'>
@@ -1310,7 +1359,7 @@ function Register({ state, update, lesson }) {
     {!coachOnly && <section className='card'><h2>Add learners</h2><p className='muted'>One name per line.</p><textarea value={names} onChange={e => setNames(e.target.value)} placeholder={'Pippa B\nArchie T\nMia J'} /><button className='btn org' onClick={addNames}>Add names</button></section>}
     <div className='footer'>
       <button className='btn' onClick={() => update(coachOnly ? { step: 'list', active: '' } : { step: 'edit' })}>{coachOnly ? 'Back to today' : 'Back'}</button>
-      {staff?.assess === false
+      {staff?.assess === false || !hasAssessment
         ? <button className='btn org' onClick={() => update(current => ({
             ...current,
             lessons: current.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item),
@@ -1328,7 +1377,7 @@ function Assess({ state, update, lesson }) {
   const selected = kids.find(p => p.id === state.selected) || kids[0];
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
   const mode = state.assessmentMode || 'swimmer';
-  const showNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
+  const showNationalCurriculum = lessonFeature(lesson, 'assessment', true) && lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
   const scoreOptions = assessmentOptions(state);
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
@@ -1414,12 +1463,14 @@ function Assess({ state, update, lesson }) {
         <h3>National Curriculum</h3>
         {nationalCurriculum.map(item => <label className='pill' key={item}><input type='checkbox' checked={!!selected.nc?.[item]} onChange={e => changeLearner(selected.id, { nc: { ...(selected.nc || {}), [item]: e.target.checked } })} /> {item}</label>)}
       </>}
-      <LearnerSessionRecord
+      {(lessonFeature(lesson, 'notes', true) || lessonFeature(lesson, 'evidence', true)) && <LearnerSessionRecord
         lesson={lesson}
         learner={selected}
         note={selected.sessionNote || ''}
         onNote={value => changeLearner(selected.id, { sessionNote: value })}
-      />
+        allowNotes={lessonFeature(lesson, 'notes', true)}
+        allowEvidence={lessonFeature(lesson, 'evidence', true)}
+      />}
     </section>}
 
     {groupList && <section className='card assessment-picker'>
@@ -1454,7 +1505,7 @@ function Assess({ state, update, lesson }) {
   </>;
 }
 
-function LearnerSessionRecord({ lesson, learner, note, onNote }) {
+function LearnerSessionRecord({ lesson, learner, note, onNote, allowNotes = true, allowEvidence = true }) {
   const cloudAccount = isCloudAccountSession();
   const [evidence, setEvidence] = useState([]);
   const [evidenceError, setEvidenceError] = useState('');
@@ -1475,7 +1526,7 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
 
   useEffect(() => {
     let active = true;
-    if (cloudAccount) {
+    if (cloudAccount || !allowEvidence) {
       setEvidence([]);
       setEvidenceError('');
       setLoadingEvidence(false);
@@ -1497,7 +1548,7 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
     return () => {
       active = false;
     };
-  }, [lesson.id, learner.id, cloudAccount]);
+  }, [lesson.id, learner.id, cloudAccount, allowEvidence]);
 
   async function addEvidence(event) {
     const files = Array.from(event.target.files || []);
@@ -1527,13 +1578,13 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
     <div className='session-record-head'>
       <div><h3>Session notes & evidence</h3><p className='muted'>Saved to {learner.name} for this session.</p></div>
     </div>
-    <textarea
+    {allowNotes && <textarea
       className='session-note'
       value={note}
       onChange={event => onNote(event.target.value)}
       placeholder='Add a quick note about progress, support, confidence or what to try next…'
-    />
-    {cloudAccount
+    />}
+    {allowEvidence && (cloudAccount
       ? <p className='evidence-cloud-pending'>Photo/video evidence is temporarily disabled for real accounts until secure organisation storage is connected.</p>
       : <div className='evidence-actions'>
           <label className='btn evidence-upload'>
@@ -1541,9 +1592,10 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
             <input type='file' accept='image/*,video/*' multiple onChange={addEvidence} />
           </label>
           <span>Stored on this device only</span>
-        </div>}
-    {!cloudAccount && evidenceError && <p className='evidence-error'>{evidenceError}</p>}
-    {!cloudAccount && (loadingEvidence ? <p className='muted'>Loading evidence…</p> : evidence.length > 0 && <div className='evidence-grid'>
+        </div>)}
+    {!allowEvidence && <p className='muted'>Photo/video evidence is switched off for this session.</p>}
+    {allowEvidence && !cloudAccount && evidenceError && <p className='evidence-error'>{evidenceError}</p>}
+    {allowEvidence && !cloudAccount && (loadingEvidence ? <p className='muted'>Loading evidence…</p> : evidence.length > 0 && <div className='evidence-grid'>
       {evidence.map(item => <article className='evidence-item' key={item.id}>
         {String(item.type).startsWith('video/')
           ? <video src={item.url} controls preload='metadata' />
@@ -1551,7 +1603,7 @@ function LearnerSessionRecord({ lesson, learner, note, onNote }) {
         <div><span>{item.name}</span><button onClick={() => removeEvidence(item)}>Remove</button></div>
       </article>)}
     </div>)}
-    <p className='evidence-safety'>{cloudAccount ? 'Notes sync with the organisation workspace. Media will stay disabled until secure cloud storage and retention controls are ready.' : 'Demo/local evidence only — use example children, not real pupil photos or videos yet.'}</p>
+    <p className='evidence-safety'>{cloudAccount ? 'Session notes sync with the organisation workspace. Media stays disabled until secure cloud storage and retention controls are ready.' : 'Demo/local evidence only — use example children, not real pupil photos or videos yet.'}</p>
   </section>;
 }
 
