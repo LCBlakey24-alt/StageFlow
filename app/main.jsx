@@ -692,7 +692,7 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
           ...(activeStaff.sessions === false ? [] : ['timetable']),
           'health',
           ...(activeStaff.export === false ? [] : ['reports']),
-          ...((activeStaff.groups === false && activeStaff.framework === false && activeStaff.certificates === false) ? [] : ['settings'])
+          'settings'
         ];
   const currentScreen = screens.includes(state.screen) ? state.screen : 'home';
   const lessonAllowed = !!lesson && !!activeStaff && (
@@ -1912,7 +1912,10 @@ function Reports({ state, update }) {
   const lessons = state.lessons.map(lesson => {
     const swimmers = state.learners.filter(p => p.lesson === lesson.id);
     const criteria = groupCriteria(state, lesson);
-    const complete = criteria.length ? swimmers.filter(p => criteria.every(c => p.res?.[c] === 'pass')).length : 0;
+    const complete = swimmers.filter(p => {
+      const applicable = learnerCriteria(state, lesson, p);
+      return applicable.length > 0 && applicable.every(c => p.res?.[c] === 'pass');
+    }).length;
     return { lesson, swimmers, criteria, complete };
   });
   return <><section className='hero compact-hero'><h1>Progress</h1></section><div className='grid2'>{lessons.map(({ lesson, swimmers, criteria, complete }) => <section className='card' key={lesson.id}><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {groupLabel(state, lesson)}</p><span className='pill'>{swimmers.length} learners</span><span className='pill'>{criteria.length} criteria</span><span className='pill'>{complete} complete</span>{swimmers.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>)}</div><section className='card'><h2>End-of-term pack</h2><p className='muted'>This will later become the printable/export pack. For now, it is showing live progress from criteria groups.</p><button className='btn org' onClick={() => update({ audit: [`Progress pack checked`, ...(state.audit || [])] })}>Log pack check</button></section></>;
