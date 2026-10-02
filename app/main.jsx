@@ -1918,7 +1918,7 @@ function Reports({ state, update }) {
     }).length;
     return { lesson, swimmers, criteria, complete };
   });
-  return <><section className='hero compact-hero'><h1>Progress</h1></section><div className='grid2'>{lessons.map(({ lesson, swimmers, criteria, complete }) => <section className='card' key={lesson.id}><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {groupLabel(state, lesson)}</p><span className='pill'>{swimmers.length} learners</span><span className='pill'>{criteria.length} criteria</span><span className='pill'>{complete} complete</span>{swimmers.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>)}</div><section className='card'><h2>End-of-term pack</h2><p className='muted'>This will later become the printable/export pack. For now, it is showing live progress from criteria groups.</p><button className='btn org' onClick={() => update({ audit: [`Progress pack checked`, ...(state.audit || [])] })}>Log pack check</button></section></>;
+  return <><section className='hero compact-hero'><h1>Progress</h1></section><div className='grid2'>{lessons.map(({ lesson, swimmers, criteria, complete }) => <section className='card' key={lesson.id}><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {groupLabel(state, lesson)}</p><span className='pill'>{swimmers.length} learners</span><span className='pill'>{criteria.length} criteria</span><span className='pill'>{complete} complete</span>{swimmers.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>)}</div><section className='card'><h2>End-of-term pack</h2><p className='muted'>This will later become the printable/export pack. For now, it is showing live progress from criteria groups.</p><button className='btn org' onClick={() => update(current => ({ ...current, audit: [`Progress pack checked`, ...(current.audit || [])] }))}>Log pack check</button></section></>;
 }
 
 function Settings({ state, update }) {
@@ -1936,18 +1936,28 @@ function Settings({ state, update }) {
 
 function Groups({ state, update }) {
   function edit(i, key, value) {
-    const groupTemplates = [...groups(state)];
-    let nextGroup = { ...groupTemplates[i], [key]: value };
-    if (key === 'programme') {
-      const allowedStages = criteriaStagesForProgramme(value, state.framework.stages || []);
-      nextGroup = { ...nextGroup, programme: normaliseProgrammeName(value), stages: (nextGroup.stages || []).filter(stage => allowedStages.includes(stage)) };
-    }
-    groupTemplates[i] = nextGroup;
-    update({ framework: { ...state.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) } });
+    update(current => {
+      const groupTemplates = [...groups(current)];
+      let nextGroup = { ...groupTemplates[i], [key]: value };
+      if (key === 'programme') {
+        const allowedStages = criteriaStagesForProgramme(value, current.framework.stages || []);
+        nextGroup = { ...nextGroup, programme: normaliseProgrammeName(value), stages: (nextGroup.stages || []).filter(stage => allowedStages.includes(stage)) };
+      }
+      groupTemplates[i] = nextGroup;
+      return {
+        ...current,
+        framework: { ...current.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) }
+      };
+    });
   }
   function addGroup() {
-    const groupTemplates = [...groups(state), { id: 'g' + Date.now(), name: 'New Criteria Group', detail: 'Choose programme and criteria sections', programme: 'School Swimming', stages: [], colour: 'blue' }];
-    update({ framework: { ...state.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) } });
+    update(current => {
+      const groupTemplates = [...groups(current), { id: 'g' + Date.now(), name: 'New Criteria Group', detail: 'Choose programme and criteria sections', programme: 'School Swimming', stages: [], colour: 'blue' }];
+      return {
+        ...current,
+        framework: { ...current.framework, groupTemplates, groups: groupTemplates.map(g => `${g.name}: ${g.detail || ''}`) }
+      };
+    });
   }
   return <section className='card'><h2>Criteria groups</h2><p className='muted'>These decide what criteria appears in classes and sessions. Pick a programme so the stage list stays relevant.</p><button className='btn org' onClick={addGroup}>+ Add criteria group</button>{groups(state).map((g, i) => {
     const groupProgramme = programmeForGroup(g);
@@ -2031,20 +2041,22 @@ function PassMarksEditor({ marks, onSave }) {
 
 function Framework({ state, update }) {
   function saveCriteria(stage, items) {
-    update({
+    update(current => ({
+      ...current,
       framework: {
-        ...state.framework,
-        criteria: { ...state.framework.criteria, [stage]: items }
+        ...current.framework,
+        criteria: { ...current.framework.criteria, [stage]: items }
       },
-      audit: [...(state.audit || []), `Updated ${stage} criteria`]
-    });
+      audit: [...(current.audit || []), `Updated ${stage} criteria`]
+    }));
   }
 
   function savePassMarks(passMarks) {
-    update({
-      framework: { ...state.framework, passMarks },
-      audit: [...(state.audit || []), 'Updated assessment marks']
-    });
+    update(current => ({
+      ...current,
+      framework: { ...current.framework, passMarks },
+      audit: [...(current.audit || []), 'Updated assessment marks']
+    }));
   }
 
   function addStage() {
@@ -2052,13 +2064,14 @@ function Framework({ state, update }) {
     const name = window.prompt('Name this criteria section', `New Criteria Section ${nextNumber}`);
     const clean = String(name || '').trim();
     if (!clean || state.framework.stages.includes(clean)) return;
-    update({
+    update(current => ({
+      ...current,
       framework: {
-        ...state.framework,
-        stages: [...state.framework.stages, clean],
-        criteria: { ...state.framework.criteria, [clean]: [] }
+        ...current.framework,
+        stages: [...current.framework.stages, clean],
+        criteria: { ...current.framework.criteria, [clean]: [] }
       }
-    });
+    }));
   }
 
   const passMarks = Array.isArray(state.framework.passMarks) && state.framework.passMarks.length >= 2
@@ -2080,15 +2093,18 @@ function Framework({ state, update }) {
 
 function Certificates({ state, update }) {
   function addCert() {
-    update({ certificates: [...state.certificates, { id: 'cert' + Date.now(), name: 'New Certificate Template', rule: 'Criteria group complete', font: 'Serif', size: 32, groupBy: 'Criteria group' }] });
+    update(current => ({ ...current, certificates: [...current.certificates, { id: 'cert' + Date.now(), name: 'New Certificate Template', rule: 'Criteria group complete', font: 'Serif', size: 32, groupBy: 'Criteria group' }] }));
   }
-  return <section className='card'><h2>Certificate templates</h2><p className='muted'>Certificate generation is still demo-level, but it now points at criteria completion rather than initial placement.</p><button className='btn org' onClick={addCert}>+ Add certificate template</button>{state.certificates.map(c => <div className='card' key={c.id}><Field label='Name' value={c.name} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, name: v } : x) })} /><Select label='Rule' value={c.rule} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, rule: v } : x) })} options={['Criteria group complete', 'National Curriculum achieved', 'Selected award only'].map(x => ({ value: x, label: x }))} /><Select label='Group by' value={c.groupBy} onChange={v => update({ certificates: state.certificates.map(x => x.id === c.id ? { ...x, groupBy: v } : x) })} options={['Criteria group', 'School / venue', 'Award', 'All in one PDF'].map(x => ({ value: x, label: x }))} /></div>)}</section>;
+  return <section className='card'><h2>Certificate templates</h2><p className='muted'>Certificate generation is still demo-level, but it now points at criteria completion rather than initial placement.</p><button className='btn org' onClick={addCert}>+ Add certificate template</button>{state.certificates.map(c => <div className='card' key={c.id}><Field label='Name' value={c.name} onChange={v => update(current => ({ ...current, certificates: current.certificates.map(x => x.id === c.id ? { ...x, name: v } : x) }))} /><Select label='Rule' value={c.rule} onChange={v => update(current => ({ ...current, certificates: current.certificates.map(x => x.id === c.id ? { ...x, rule: v } : x) }))} options={['Criteria group complete', 'National Curriculum achieved', 'Selected award only'].map(x => ({ value: x, label: x }))} /><Select label='Group by' value={c.groupBy} onChange={v => update(current => ({ ...current, certificates: current.certificates.map(x => x.id === c.id ? { ...x, groupBy: v } : x) }))} options={['Criteria group', 'School / venue', 'Award', 'All in one PDF'].map(x => ({ value: x, label: x }))} /></div>)}</section>;
 }
 function Permissions({ state, update }) {
   const cloudAccount = isCloudAccountSession();
 
   function patchStaff(id, patch) {
-    update({ staff: state.staff.map(person => person.id === id ? { ...person, ...patch } : person) });
+    update(current => ({
+      ...current,
+      staff: current.staff.map(person => person.id === id ? { ...person, ...patch } : person)
+    }));
   }
 
   function generateCode(id) {
