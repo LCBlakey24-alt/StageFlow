@@ -244,7 +244,7 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError }) {
 }
 
 
-export function StaffAccountsPanel() {
+export function StaffAccountsPanel({ onStaffChanged = null }) {
   const [staff, setStaff] = useState([]);
   const [invites, setInvites] = useState([]);
   const [name, setName] = useState('');
@@ -277,8 +277,10 @@ export function StaffAccountsPanel() {
     if (staffResult.error) setError(staffResult.error.message);
     if (inviteResult.error && !staffResult.error) setError(inviteResult.error.message);
 
+    const linkedStaff = (staffResult.data || []).map(normaliseStaff).filter(Boolean);
     setStaff(staffResult.data || []);
     setInvites(inviteResult.data || []);
+    onStaffChanged?.(linkedStaff);
     setLoading(false);
   }
 

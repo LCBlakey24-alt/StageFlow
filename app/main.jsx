@@ -1791,7 +1791,7 @@ function Permissions({ state, update }) {
   }
 
   return <>
-  <StaffAccountsPanel />
+  <StaffAccountsPanel onStaffChanged={cloudStaff => update({ staff: cloudStaff })} />
   {!cloudAccount && <section className='card'>
     <h2>Quick access codes</h2>
     <p className='muted'>Optional demo/poolside codes. Real account access uses the email login above.</p>

@@ -1,11 +1,11 @@
-const CACHE_NAME = 'stage-flow-offline-v1';
+const CACHE_NAME = 'stage-flow-offline-v2';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll([OFFLINE_URL, '/manifest.webmanifest', '/stage-flow-icon.svg']))
+      .then(cache => cache.addAll([OFFLINE_URL, '/manifest.webmanifest', '/branding/StageFlow_AppIcon_Concept01.png']))
       .catch(() => undefined)
   );
 });

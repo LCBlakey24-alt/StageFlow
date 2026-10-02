@@ -1,8 +1,43 @@
 {
-  "name": "StageFlow",
-  "short_name": "StageFlow",
-  "start_url": "/",
+  "name": "Stage Flow",
+  "short_name": "Stage Flow",
+  "description": "Timetables, attendance, notes and optional assessment for coached activities.",
+  "id": "/?app=1",
+  "start_url": "/?app=1",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f2ec",
-  "theme_color": "#0f172a"
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#f8fbff",
+  "theme_color": "#071527",
+  "icons": [
+    {
+      "src": "/branding/StageFlow_AppIcon_Concept01.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Staff access",
+      "short_name": "Staff access",
+      "description": "Open Stage Flow staff access",
+      "url": "/?app=1",
+      "icons": [
+        {
+          "src": "/branding/StageFlow_AppIcon_Concept01.png",
+          "sizes": "1254x1254",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "categories": [
+    "education",
+    "productivity",
+    "sports"
+  ]
 }

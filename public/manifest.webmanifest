@@ -14,10 +14,10 @@
   "theme_color": "#071527",
   "icons": [
     {
-      "src": "/stage-flow-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/branding/StageFlow_AppIcon_Concept01.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "shortcuts": [
@@ -28,9 +28,9 @@
       "url": "/?app=1",
       "icons": [
         {
-          "src": "/stage-flow-icon.svg",
-          "sizes": "any",
-          "type": "image/svg+xml"
+          "src": "/branding/StageFlow_AppIcon_Concept01.png",
+          "sizes": "1254x1254",
+          "type": "image/png"
         }
       ]
     }
