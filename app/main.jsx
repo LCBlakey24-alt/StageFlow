@@ -89,6 +89,8 @@ const starter = {
   selected: '',
   selectedSkill: '',
   assessmentMode: 'swimmer',
+  sessionRecords: {},
+  activeOccurrenceDate: '',
   active: 'l1',
   draft: null,
   currentDay: 'Tuesday',
@@ -128,6 +130,150 @@ function formatTime(total) {
   return `${hh}:${mm}`;
 }
 function addMinutes(time, minutes) { return formatTime(timeToMinutes(time) + (Number(minutes) || 0)); }
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateForWeekday(day, reference = new Date()) {
+  const target = Math.max(0, days.indexOf(day));
+  const current = (reference.getDay() + 6) % 7;
+  const result = new Date(reference);
+  result.setHours(12, 0, 0, 0);
+  result.setDate(result.getDate() + (target - current));
+  return localDateKey(result);
+}
+
+function displayOccurrenceDate(dateKey) {
+  if (!dateKey) return '';
+  const date = new Date(`${dateKey}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return dateKey;
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function occurrenceKey(lessonId, dateKey) {
+  return `${lessonId}::${dateKey}`;
+}
+
+function occurrenceFor(state, lessonId, dateKey) {
+  return state.sessionRecords?.[occurrenceKey(lessonId, dateKey)] || null;
+}
+
+function learnerSessionSnapshot(learner) {
+  return {
+    att: learner.att || 'Present',
+    res: { ...(learner.res || {}) },
+    dist: { ...(learner.dist || { front: '0m', back: '0m' }) },
+    nc: { ...(learner.nc || {}) },
+    sessionNote: learner.sessionNote || ''
+  };
+}
+
+function openSessionOccurrence(current, lesson, dateKey) {
+  const key = occurrenceKey(lesson.id, dateKey);
+  const existing = current.sessionRecords?.[key] || null;
+  const now = new Date().toISOString();
+
+  const learners = current.learners.map(learner => {
+    if (learner.lesson !== lesson.id) return learner;
+    const saved = existing?.learners?.[learner.id];
+    if (saved) {
+      return {
+        ...learner,
+        att: saved.att || 'Present',
+        res: saved.res || learner.res || {},
+        dist: saved.dist || learner.dist || { front: '0m', back: '0m' },
+        nc: saved.nc || learner.nc || {},
+        sessionNote: saved.sessionNote || ''
+      };
+    }
+    return { ...learner, att: 'Present', sessionNote: '' };
+  });
+
+  return {
+    ...current,
+    learners,
+    sessionRecords: {
+      ...(current.sessionRecords || {}),
+      [key]: {
+        lessonId: lesson.id,
+        date: dateKey,
+        startedAt: existing?.startedAt || now,
+        completedAt: existing?.completedAt || '',
+        learners: existing?.learners || {}
+      }
+    },
+    active: lesson.id,
+    activeOccurrenceDate: dateKey,
+    currentDay: lessonDay(lesson),
+    step: 'register'
+  };
+}
+
+function updateLearnerOccurrence(current, lessonId, dateKey, learnerId, patch) {
+  let changedLearner = null;
+  const learners = current.learners.map(learner => {
+    if (learner.id !== learnerId) return learner;
+    changedLearner = { ...learner, ...patch };
+    return changedLearner;
+  });
+  if (!changedLearner) return current;
+
+  const key = occurrenceKey(lessonId, dateKey);
+  const existing = current.sessionRecords?.[key] || {};
+  return {
+    ...current,
+    learners,
+    sessionRecords: {
+      ...(current.sessionRecords || {}),
+      [key]: {
+        lessonId,
+        date: dateKey,
+        startedAt: existing.startedAt || new Date().toISOString(),
+        completedAt: existing.completedAt || '',
+        learners: {
+          ...(existing.learners || {}),
+          [learnerId]: learnerSessionSnapshot(changedLearner)
+        }
+      }
+    }
+  };
+}
+
+function completeSessionOccurrence(current, lesson, dateKey) {
+  const key = occurrenceKey(lesson.id, dateKey);
+  const existing = current.sessionRecords?.[key] || {};
+  const now = new Date().toISOString();
+  const snapshots = {};
+  current.learners
+    .filter(learner => learner.lesson === lesson.id)
+    .forEach(learner => {
+      snapshots[learner.id] = learnerSessionSnapshot(learner);
+    });
+
+  return {
+    ...current,
+    sessionRecords: {
+      ...(current.sessionRecords || {}),
+      [key]: {
+        lessonId: lesson.id,
+        date: dateKey,
+        startedAt: existing.startedAt || now,
+        completedAt: now,
+        learners: snapshots
+      }
+    },
+    step: 'list',
+    active: '',
+    activeOccurrenceDate: '',
+    selected: '',
+    selectedSkill: ''
+  };
+}
+
 function lessonDay(lesson) { return lesson?.day || 'Tuesday'; }
 function groups(state) { return state.framework?.groupTemplates || []; }
 function groupFor(state, id) { return groups(state).find(g => g.id === id); }
@@ -727,7 +873,7 @@ function CoachHome({ state, update, staff }) {
     <section className='card coach-day-card'>
       <div className='coach-day-head'><h2>Today</h2><span className='pill'>{lessons.length} session{lessons.length === 1 ? '' : 's'}</span></div>
       <div className='coach-lesson-list'>
-        {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions assigned today.</p>}
+        {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} occurrenceDate={localDateKey()} />) : <p className='muted'>No sessions assigned today.</p>}
       </div>
     </section>
     <button className='btn org coach-full-button' onClick={() => update({ screen: 'timetable', step: 'list' })}>Open timetable</button>
@@ -812,19 +958,14 @@ function CoachPinGate({ state, onUnlock }) {
   </>;
 }
 
-function CoachLessonBar({ state, lesson, update }) {
+function CoachLessonBar({ state, lesson, update, occurrenceDate = localDateKey() }) {
   const learners = state.learners.filter(learner => learner.lesson === lesson.id);
-  const isDone = !!lesson.completedAt;
-  const isStarted = !!lesson.startedAt && !isDone;
+  const occurrence = occurrenceFor(state, lesson.id, occurrenceDate);
+  const isDone = !!occurrence?.completedAt;
+  const isStarted = !!occurrence?.startedAt && !isDone;
 
   function openLesson() {
-    update(current => ({
-      ...current,
-      lessons: current.lessons.map(item => item.id === lesson.id ? { ...item, startedAt: item.startedAt || new Date().toISOString() } : item),
-      active: lesson.id,
-      currentDay: lessonDay(lesson),
-      step: 'register'
-    }));
+    update(current => openSessionOccurrence(current, lesson, occurrenceDate));
   }
 
   return <button className={'coach-lesson-bar ' + (isDone ? 'done' : isStarted ? 'started' : '')} onClick={openLesson}>
@@ -844,7 +985,7 @@ function CoachToday({ state, update, staff }) {
   return <section className='card coach-day-card'>
     <div className='coach-day-head'><div><p className='muted'>Today</p><h2>{day}</h2></div><span className='pill'>{lessons.length} session{lessons.length === 1 ? '' : 's'}</span></div>
     <div className='coach-lesson-list'>
-      {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions assigned today.</p>}
+      {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} occurrenceDate={localDateKey()} />) : <p className='muted'>No sessions assigned today.</p>}
     </div>
   </section>;
 }
@@ -857,10 +998,11 @@ function CoachWeek({ state, update, staff }) {
   return <div className='coach-week-grid'>
     {days.map(day => {
       const lessons = coachLessons.filter(lesson => lessonDay(lesson) === day);
+      const occurrenceDate = dateForWeekday(day);
       return <section className='card coach-week-day' key={day}>
-        <div className='coach-week-day-head'><h2>{day}</h2><span>{lessons.length}</span></div>
+        <div className='coach-week-day-head'><div><h2>{day}</h2><small>{displayOccurrenceDate(occurrenceDate)}</small></div><span>{lessons.length}</span></div>
         <div className='coach-lesson-list'>
-          {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} />) : <p className='muted'>No sessions</p>}
+          {lessons.length ? lessons.map(lesson => <CoachLessonBar key={lesson.id} state={state} lesson={lesson} update={update} occurrenceDate={occurrenceDate} />) : <p className='muted'>No sessions</p>}
         </div>
       </section>;
     })}
@@ -1140,7 +1282,8 @@ function Timetable({ state, update }) {
 
 function LessonCard({ state, update, lesson }) {
   const swimmers = state.learners.filter(p => p.lesson === lesson.id);
-  return <section className='card lesson'><div className='time'>{lesson.time}</div><div><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {lesson.school} · {lesson.year}</p><span className='pill'>{groupLabel(state, lesson)}</span><span className='pill'>{swimmers.length} learners</span><span className='pill'>{groupCriteria(state, lesson).length} criteria</span></div><div className='score-buttons'><button className='btn' onClick={() => update({ active: lesson.id, step: 'edit' })}>Edit</button><button className='btn org' onClick={() => update({ active: lesson.id, step: 'register' })}>Open</button></div></section>;
+  const occurrenceDate = dateForWeekday(lessonDay(lesson));
+  return <section className='card lesson'><div className='time'>{lesson.time}</div><div><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {lesson.school} · {lesson.year}</p><span className='pill'>{groupLabel(state, lesson)}</span><span className='pill'>{swimmers.length} learners</span><span className='pill'>{groupCriteria(state, lesson).length} criteria</span></div><div className='score-buttons'><button className='btn' onClick={() => update({ active: lesson.id, activeOccurrenceDate: '', step: 'edit' })}>Edit</button><button className='btn org' onClick={() => update(current => openSessionOccurrence(current, lesson, occurrenceDate))}>Open</button></div></section>;
 }
 
 function SessionAccessDenied({ update }) {
@@ -1173,8 +1316,9 @@ function Lesson({ state, update, lesson }) {
   const requestedStep = state.step || 'register';
   const currentStep = coachOnly && requestedStep === 'edit' ? 'register' : requestedStep;
   const steps = ['edit', 'register', 'assess', 'save'];
+  const occurrenceDate = state.activeOccurrenceDate || localDateKey();
   return <>
-    {coachOnly ? <section className='hero compact-hero lesson-coach-hero'><div><p>{lesson.time} · {lesson.school}</p><h1>{lesson.name}</h1></div><span>{currentStep === 'register' ? 'Register' : 'Assessment'}</span></section> : <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupCriteria(state, lesson).length} criteria</p><div className='steps'>{steps.map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess' : step}</span>)}</div></section>}
+    {coachOnly ? <section className='hero compact-hero lesson-coach-hero'><div><p>{displayOccurrenceDate(occurrenceDate)} · {lesson.time} · {lesson.school}</p><h1>{lesson.name}</h1></div><span>{currentStep === 'register' ? 'Register' : 'Assessment'}</span></section> : <section className='hero'><p>{lessonProgramme(lesson)}</p><h1>{lesson.name}</h1><p>{groupCriteria(state, lesson).length} criteria</p><div className='steps'>{steps.map(step => <span key={step} className={currentStep === step ? 'on' : ''}>{step === 'edit' ? 'Setup' : step === 'assess' ? 'Assess' : step}</span>)}</div></section>}
     {currentStep === 'edit' && !coachOnly && <LessonSetup state={state} update={update} lesson={lesson} />}
     {currentStep === 'register' && <Register state={state} update={update} lesson={lesson} />}
     {currentStep === 'assess' && <Assess state={state} update={update} lesson={lesson} />}
@@ -1318,11 +1462,10 @@ function Register({ state, update, lesson }) {
     ? kids.flatMap(learner => (Array.isArray(learner.notes) ? learner.notes : []).map(note => ({ ...note, learnerId: learner.id, learnerName: learner.name })))
     : [];
 
+  const occurrenceDate = state.activeOccurrenceDate || localDateKey();
+
   function changeLearner(id, patch) {
-    update(current => ({
-      ...current,
-      learners: current.learners.map(p => p.id === id ? { ...p, ...patch } : p)
-    }));
+    update(current => updateLearnerOccurrence(current, lesson.id, occurrenceDate, id, patch));
   }
 
   function addNames() {
@@ -1339,7 +1482,7 @@ function Register({ state, update, lesson }) {
   return <>
     <section className='card register-card'>
       <div className='register-head'>
-        <h2>Register</h2>
+        <div><h2>Register</h2><p className='muted register-date'>{displayOccurrenceDate(occurrenceDate)}</p></div>
         <div className='register-head-actions'>
           {lessonNotes.length > 0 && <button className='lesson-note-alert' onClick={() => setShowAllNotes(value => !value)}><span>📝</span><b>{lessonNotes.length}</b></button>}
           <span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span>
@@ -1379,12 +1522,7 @@ function Register({ state, update, lesson }) {
     <div className='footer'>
       <button className='btn' onClick={() => update(coachOnly ? { step: 'list', active: '' } : { step: 'edit' })}>{coachOnly ? 'Back to today' : 'Back'}</button>
       {staff?.assess === false || !hasAssessment
-        ? <button className='btn org' onClick={() => update(current => ({
-            ...current,
-            lessons: current.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item),
-            step: 'list',
-            active: ''
-          }))}>Save & finish</button>
+        ? <button className='btn org' onClick={() => update(current => completeSessionOccurrence(current, lesson, occurrenceDate))}>Save & finish</button>
         : <button className='btn org' onClick={() => update({ step: 'assess', selected: kids.find(p => p.att !== 'Absent')?.id || kids[0]?.id || '', assessmentMode: 'swimmer' })}>Assess</button>}
     </div>
   </>;
@@ -1400,13 +1538,11 @@ function Assess({ state, update, lesson }) {
   const scoreOptions = assessmentOptions(state);
   const staff = coachSessionStaff(state);
   const coachOnly = !!staff && staff.role !== 'Admin';
+  const occurrenceDate = state.activeOccurrenceDate || localDateKey();
   const [detailView, setDetailView] = useState('list');
 
   function changeLearner(id, patch) {
-    update(current => ({
-      ...current,
-      learners: current.learners.map(p => p.id === id ? { ...p, ...patch } : p)
-    }));
+    update(current => updateLearnerOccurrence(current, lesson.id, occurrenceDate, id, patch));
   }
 
   function scoreLearner(learner, criteriaItem, value) {
@@ -1519,7 +1655,7 @@ function Assess({ state, update, lesson }) {
 
     <div className='footer'>
       <button className='btn' onClick={() => update({ step: 'register' })}>Back</button>
-      {coachOnly ? <button className='btn org' onClick={() => update({ lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item), step: 'list', active: '' })}>Save & finish</button> : <button className='btn org' onClick={() => update({ step: 'save' })}>Save session</button>}
+      {coachOnly ? <button className='btn org' onClick={() => update(current => completeSessionOccurrence(current, lesson, occurrenceDate))}>Save & finish</button> : <button className='btn org' onClick={() => update({ step: 'save' })}>Save session</button>}
     </div>
   </>;
 }
@@ -1631,6 +1767,7 @@ function SkillScore({ criteria, value, options, onScore }) {
 }
 
 function SaveLesson({ state, update, lesson }) {
+  const occurrenceDate = state.activeOccurrenceDate || localDateKey();
   const kids = state.learners.filter(p => p.lesson === lesson.id);
   const present = kids.filter(p => p.att !== 'Absent');
   const criteria = groupCriteria(state, lesson);
@@ -1638,7 +1775,7 @@ function SaveLesson({ state, update, lesson }) {
   return <>
     <section className='card'><h2>Session saved</h2><p className='muted'>{lesson.name}</p><div className='grid stat-grid'><div className='card stat-card'><h2>{present.length}</h2><p className='muted'>Present</p></div><div className='card stat-card'><h2>{complete.length}</h2><p className='muted'>Completed criteria</p></div><div className='card stat-card'><h2>{criteria.length}</h2><p className='muted'>Criteria assessed</p></div></div></section>
     <section className='card'><h2>Session summary</h2>{present.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>
-    <div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Back to assessment</button><button className='btn org' onClick={() => update({ lessons: state.lessons.map(item => item.id === lesson.id ? { ...item, completedAt: new Date().toISOString() } : item), step: 'list', active: '' })}>Finish</button></div>
+    <div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Back to assessment</button><button className='btn org' onClick={() => update(current => completeSessionOccurrence(current, lesson, occurrenceDate))}>Finish</button></div>
   </>;
 }
 

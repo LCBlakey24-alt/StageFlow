@@ -1,6 +1,6 @@
 import { supabase, supabaseConfigured } from './supabaseClient.js';
 
-const SHARED_KEYS = ['lessons', 'learners', 'framework', 'certificates', 'pack', 'audit'];
+const SHARED_KEYS = ['lessons', 'learners', 'sessionRecords', 'framework', 'certificates', 'pack', 'audit'];
 
 export function workspaceSnapshot(state) {
   return SHARED_KEYS.reduce((snapshot, key) => {

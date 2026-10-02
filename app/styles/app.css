@@ -430,3 +430,7 @@ textarea{min-height:92px;resize:vertical}
 @media(max-width:430px){
   .day-mini-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+
+.register-date{font-size:12px;margin-top:3px}
+.coach-week-day-head>div{min-width:0}
+.coach-week-day-head small{display:block;margin-top:2px;color:var(--muted);font-size:10px;font-weight:850;white-space:nowrap}
