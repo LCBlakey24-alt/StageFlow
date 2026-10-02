@@ -85,8 +85,11 @@ function inferProgramme(lesson, fallbackProgramme) {
 function groupStageForLearner(learner, lessons, framework) {
   const lesson = lessons.find(item => item.id === learner.lesson) || lessons[0];
   const group = framework.groupTemplates?.find(item => item.id === lesson?.groupTemplateId);
-  if (lesson?.programme === 'Evening Swim 1:1') return learner.stage || group?.stages?.[0] || framework.stages?.[0] || 'Stage 1';
-  return group?.stages?.[0] || framework.stages?.[0] || learner.stage || 'Stage 1';
+  const stages = Array.isArray(group?.stages) ? group.stages : [];
+
+  if (learner.stage && stages.includes(learner.stage)) return learner.stage;
+  if (lesson?.programme === 'Evening Swim 1:1') return learner.stage || stages[0] || framework.stages?.[0] || 'Stage 1';
+  return stages[0] || learner.stage || framework.stages?.[0] || 'Stage 1';
 }
 
 function defaultGroupForProgramme(programme, framework, currentGroupId) {

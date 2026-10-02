@@ -487,3 +487,7 @@ textarea{min-height:92px;resize:vertical}
   .rail button{font-size:9px}
   .steps span{font-size:9.5px}
 }
+
+.learner-stage-pill{display:inline-flex;width:max-content;margin-top:5px;border:1px solid #bfdbfe;background:#eff6ff;color:#1e3a8a;border-radius:999px;padding:3px 7px;font-size:10px;font-weight:1000}
+.learner-stage-select{width:auto;max-width:180px;margin-top:5px;padding:5px 28px 5px 8px;font-size:11px;border-radius:999px}
+@media(max-width:600px){.learner-stage-select{max-width:150px}}

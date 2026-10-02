@@ -377,6 +377,23 @@ function groupCriteria(state, lesson) {
   const stages = groupStages(state, lesson);
   return [...new Set(stages.flatMap(stage => criteriaForStage(state, stage)))];
 }
+
+function learnerCriteria(state, lesson, learner) {
+  const group = groupFor(state, lesson?.groupTemplateId);
+  const stages = groupStages(state, lesson);
+  if (!lesson || !learner || !lessonFeature(lesson, 'assessment', true) || lesson.mode === 'National Curriculum only') return [];
+
+  // 1:1/all-stage sessions intentionally expose the complete group framework.
+  if (group?.allStages || lessonProgramme(lesson) === 'Evening Swim 1:1') {
+    return groupCriteria(state, lesson);
+  }
+
+  if (learner.stage && stages.includes(learner.stage)) {
+    return [...new Set(criteriaForStage(state, learner.stage))];
+  }
+
+  return groupCriteria(state, lesson);
+}
 function groupLabel(state, lesson) {
   const group = groupFor(state, lesson?.groupTemplateId);
   return group ? `${group.name} · ${group.detail || group.stages?.join(', ') || 'Criteria group'}` : 'No criteria group selected';
@@ -414,7 +431,7 @@ function noCriteriaLabel(lesson) {
 }
 
 function completionText(state, lesson, learner) {
-  const criteria = groupCriteria(state, lesson);
+  const criteria = learnerCriteria(state, lesson, learner);
   if (!criteria.length) return noCriteriaLabel(lesson);
   const passed = criteria.filter(c => learner?.res?.[c] === 'pass').length;
   return `${passed}/${criteria.length} criteria passed`;
@@ -1505,6 +1522,7 @@ function LearnerNotesPanel({ state, update, learner, canEdit, onClose }) {
 
 function Register({ state, update, lesson }) {
   const kids = state.learners.filter(p => p.lesson === lesson.id);
+  const lessonStages = groupStages(state, lesson);
   const [names, setNames] = useState('');
   const [openNotes, setOpenNotes] = useState('');
   const [showAllNotes, setShowAllNotes] = useState(false);
@@ -1570,6 +1588,16 @@ function Register({ state, update, lesson }) {
               <div className='register-person-main'>
                 <b>{p.name}</b>
                 <small>{completionText(state, lesson, p)}</small>
+                {lessonStages.length > 1 && (coachOnly
+                  ? <span className='learner-stage-pill'>{p.stage || lessonStages[0]}</span>
+                  : <select
+                      className='learner-stage-select'
+                      value={lessonStages.includes(p.stage) ? p.stage : lessonStages[0]}
+                      onChange={e => changeLearner(p.id, { stage: e.target.value })}
+                      aria-label={`${p.name} stage`}
+                    >
+                      {lessonStages.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                    </select>)}
               </div>
               {showNoteButton && <button
                 className={'learner-note-button ' + (noteCount ? 'has-notes' : '')}
@@ -1610,9 +1638,11 @@ function Register({ state, update, lesson }) {
 
 function Assess({ state, update, lesson }) {
   const kids = state.learners.filter(p => p.lesson === lesson.id && p.att !== 'Absent');
-  const criteria = groupCriteria(state, lesson);
   const selected = kids.find(p => p.id === state.selected) || kids[0];
+  const criteria = [...new Set(kids.flatMap(child => learnerCriteria(state, lesson, child)))];
+  const selectedCriteria = selected ? learnerCriteria(state, lesson, selected) : [];
   const selectedSkill = criteria.includes(state.selectedSkill) ? state.selectedSkill : criteria[0] || '';
+  const relevantKids = selectedSkill ? kids.filter(child => learnerCriteria(state, lesson, child).includes(selectedSkill)) : [];
   const mode = state.assessmentMode || 'swimmer';
   const showNationalCurriculum = lessonFeature(lesson, 'assessment', true) && lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
   const scoreOptions = assessmentOptions(state);
@@ -1676,10 +1706,11 @@ function Assess({ state, update, lesson }) {
       <div className='assessment-picker-head'><h2>Choose a child</h2><span className='pill'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</span></div>
       <div className='assessment-list'>
         {kids.map(child => {
-          const marked = criteria.filter(skill => isMarkedAssessment(child.res?.[skill])).length;
-          const progressClass = marked && marked === criteria.length ? ' all-marked' : marked ? ' started' : '';
+          const childCriteria = learnerCriteria(state, lesson, child);
+          const marked = childCriteria.filter(skill => isMarkedAssessment(child.res?.[skill])).length;
+          const progressClass = marked && marked === childCriteria.length ? ' all-marked' : marked ? ' started' : '';
           return <button className={'assessment-list-button' + progressClass} key={child.id} onClick={() => openChild(child)}>
-            <span><strong>{child.name}</strong><small>{childAssessmentSummary(criteria, child, lesson)}</small></span>
+            <span><strong>{child.name}</strong><small>{childAssessmentSummary(childCriteria, child, lesson)}{groupStages(state, lesson).length > 1 && child.stage ? ` · ${child.stage}` : ''}</small></span>
             <b>›</b>
           </button>;
         })}
@@ -1688,11 +1719,11 @@ function Assess({ state, update, lesson }) {
 
     {individualDetail && <section className='card assessment-card'>
       <button className='assessment-back' onClick={() => setDetailView('list')}>‹ Back to children</button>
-      <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{childAssessmentSummary(criteria, selected, lesson)}</p></div></div>
+      <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{childAssessmentSummary(selectedCriteria, selected, lesson)}{groupStages(state, lesson).length > 1 && selected.stage ? ` · ${selected.stage}` : ''}</p></div></div>
       {lesson.mode !== 'National Curriculum only' && <>
         <div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div>
         <p className='muted'>Higher distances also mark matching lower-distance skills.</p>
-        {criteria.map(skill => <SkillScore key={skill} criteria={skill} value={selected.res?.[skill]} options={scoreOptions} onScore={v => scoreLearner(selected, skill, v)} />)}
+        {selectedCriteria.map(skill => <SkillScore key={skill} criteria={skill} value={selected.res?.[skill]} options={scoreOptions} onScore={v => scoreLearner(selected, skill, v)} />)}
       </>}
       {showNationalCurriculum && <>
         <h3>National Curriculum</h3>
@@ -1712,10 +1743,11 @@ function Assess({ state, update, lesson }) {
       <div className='assessment-picker-head'><h2>Choose a skill</h2><span className='pill'>{criteria.length} skill{criteria.length === 1 ? '' : 's'}</span></div>
       {criteria.length ? <div className='assessment-list'>
         {criteria.map(skill => {
-          const assessed = kids.filter(child => isMarkedAssessment(child.res?.[skill])).length;
-          const progressClass = assessed && assessed === kids.length ? ' all-marked' : assessed ? ' started' : '';
+          const applicable = kids.filter(child => learnerCriteria(state, lesson, child).includes(skill));
+          const assessed = applicable.filter(child => isMarkedAssessment(child.res?.[skill])).length;
+          const progressClass = assessed && assessed === applicable.length ? ' all-marked' : assessed ? ' started' : '';
           return <button className={'assessment-list-button' + progressClass} key={skill} onClick={() => openSkill(skill)}>
-            <span><strong>{skill}</strong><small>{assessed ? `${assessed}/${kids.length} marked` : 'Not marked yet'}</small></span>
+            <span><strong>{skill}</strong><small>{assessed ? `${assessed}/${applicable.length} marked` : `${applicable.length} relevant learner${applicable.length === 1 ? '' : 's'}`}</small></span>
             <b>›</b>
           </button>;
         })}
@@ -1724,9 +1756,9 @@ function Assess({ state, update, lesson }) {
 
     {groupDetail && <section className='card skill-assessment'>
       <button className='assessment-back' onClick={() => setDetailView('list')}>‹ Back to skills</button>
-      <div className='assessment-head'><div><h2>{selectedSkill}</h2><p className='muted'>{kids.length} child{kids.length === 1 ? '' : 'ren'}</p></div></div>
+      <div className='assessment-head'><div><h2>{selectedSkill}</h2><p className='muted'>{relevantKids.length} relevant learner{relevantKids.length === 1 ? '' : 's'}</p></div></div>
       <div className='skill-list'>
-        {kids.map(child => <div className='skill-row' key={child.id}>
+        {relevantKids.map(child => <div className='skill-row' key={child.id}>
           <div><h3>{child.name}</h3></div>
           <div className='score-buttons'>{scoreOptions.map((option, index) => <button className={'score-btn ' + (resultMatchesOption(child.res?.[selectedSkill], option, index, scoreOptions) ? 'on' : '')} key={option.value} onClick={() => scoreLearner(child, selectedSkill, option.value)}>{option.label}</button>)}</div>
         </div>)}
