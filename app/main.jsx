@@ -643,6 +643,7 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
     accountOrgId,
     state.lessons,
     state.learners,
+    state.sessionRecords,
     state.framework,
     state.certificates,
     state.pack,
@@ -2083,7 +2084,7 @@ function Permissions({ state, update }) {
   }
 
   return <>
-  <StaffAccountsPanel onStaffChanged={cloudStaff => update({ staff: cloudStaff })} />
+  {cloudAccount && <StaffAccountsPanel onStaffChanged={cloudStaff => update({ staff: cloudStaff })} />}
   {!cloudAccount && <section className='card'>
     <h2>Quick access codes</h2>
     <p className='muted'>Optional demo/poolside codes. Real account access uses the email login above.</p>
