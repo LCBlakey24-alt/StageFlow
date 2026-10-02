@@ -681,7 +681,7 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
   }
 
   const lesson = state.lessons.find(l => l.id === state.active);
-  const activeStaff = accountMode && accountStaff ? accountStaff : coachSessionStaff(state);
+  const activeStaff = accountStaff || coachSessionStaff(state);
   const coachOnly = !!activeStaff && activeStaff.role !== 'Admin';
   const protectedScreen = state.screen !== 'home';
   const needsUnlock = protectedScreen && !activeStaff;
@@ -707,7 +707,7 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
       <div className='brand'>Stage Flow</div>
       <div className='top-actions'>
         {accountMode && <span className={'cloud-sync-status ' + cloudStatus}>{cloudStatus === 'saving' ? 'Saving…' : cloudStatus === 'conflict' ? 'Sync conflict' : cloudStatus === 'error' ? 'Sync issue' : 'Cloud synced'}</span>}
-        {activeStaff && <button className='btn' onClick={accountMode && onAccountSignOut ? onAccountSignOut : lockStaff}>{accountMode ? 'Sign out' : 'Lock'}</button>}
+        {activeStaff && <button className='btn' onClick={onAccountSignOut || lockStaff}>{onAccountSignOut ? 'Sign out' : 'Lock'}</button>}
       </div>
     </div>
     {accountMode && cloudStatus === 'conflict' && <div className='cloud-conflict-banner'>

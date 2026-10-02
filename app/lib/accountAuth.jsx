@@ -30,6 +30,38 @@ function storeLinkedStaff(staff) {
   } catch {}
 }
 
+const DEMO_EMAIL = 'demo.admin@stageflow.test';
+const DEMO_PASSWORD = 'StageFlowTest!26';
+const DEMO_SESSION_KEY = 'stageflow-demo-account-session';
+const DEMO_STAFF = {
+  id: 'demo-account-admin',
+  name: 'Stage Flow Test Admin',
+  email: DEMO_EMAIL,
+  role: 'Admin',
+  accountRole: 'demo',
+  sessions: true,
+  groups: true,
+  learners: true,
+  assess: true,
+  export: true,
+  framework: true,
+  certificates: true
+};
+
+function hasDemoSession() {
+  try { return window.sessionStorage.getItem(DEMO_SESSION_KEY) === '1'; } catch { return false; }
+}
+
+function startDemoSession() {
+  try { window.sessionStorage.setItem(DEMO_SESSION_KEY, '1'); } catch {}
+  storeLinkedStaff(DEMO_STAFF);
+}
+
+function endDemoSession() {
+  try { window.sessionStorage.removeItem(DEMO_SESSION_KEY); } catch {}
+  storeLinkedStaff(null);
+}
+
 async function loadLinkedStaff(userId) {
   const { data, error } = await supabase
     .from('staff_members')
@@ -52,7 +84,7 @@ function requestedAuthAction() {
 }
 
 export function StageFlowAccountGate({ children }) {
-  const [status, setStatus] = useState(supabaseConfigured ? 'loading' : 'demo');
+  const [status, setStatus] = useState(() => hasDemoSession() ? 'demo-ready' : (supabaseConfigured ? 'loading' : 'demo'));
   const [session, setSession] = useState(null);
   const [staff, setStaff] = useState(null);
   const [mode, setMode] = useState(() => requestedAuthAction() || 'signin');
@@ -96,6 +128,12 @@ export function StageFlowAccountGate({ children }) {
   }
 
   useEffect(() => {
+    if (hasDemoSession()) {
+      startDemoSession();
+      setStatus('demo-ready');
+      return undefined;
+    }
+
     if (!supabaseConfigured) {
       storeLinkedStaff(null);
       setStatus('demo');
@@ -134,14 +172,34 @@ export function StageFlowAccountGate({ children }) {
   async function signOut() {
     setError('');
     await supabase.auth.signOut();
-    storeLinkedStaff(null);
+    endDemoSession();
     setStaff(null);
     setSession(null);
     setStatus('signed-out');
   }
 
+  function signInDemo() {
+    setError('');
+    setMessage('');
+    startDemoSession();
+    setStaff(null);
+    setSession(null);
+    setStatus('demo-ready');
+  }
+
+  function signOutDemo() {
+    endDemoSession();
+    setStaff(null);
+    setSession(null);
+    setStatus('signed-out');
+  }
+
+  if (status === 'demo-ready') {
+    return children({ accountMode: false, signOut: signOutDemo, staff: DEMO_STAFF });
+  }
+
   if (!supabaseConfigured || status === 'demo') {
-    return children({ accountMode: false, signOut: null });
+    return children({ accountMode: false, signOut: null, staff: null });
   }
 
   if (status === 'loading') return <div className='account-loading'>Loading Stage Flow…</div>;
@@ -155,6 +213,7 @@ export function StageFlowAccountGate({ children }) {
       error={error}
       setError={setError}
       onPasswordSet={completePasswordSetup}
+      onDemoSignIn={signInDemo}
     />;
   }
 
@@ -181,10 +240,11 @@ export function StageFlowAccountGate({ children }) {
     setMessage={setMessage}
     error={error}
     setError={setError}
+    onDemoSignIn={signInDemo}
   />;
 }
 
-function AccountForm({ mode, setMode, message, setMessage, error, setError, onPasswordSet = null }) {
+function AccountForm({ mode, setMode, message, setMessage, error, setError, onPasswordSet = null, onDemoSignIn = null }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -206,7 +266,12 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError, onPa
 
     try {
       if (mode === 'signin') {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const cleanEmail = email.trim().toLowerCase();
+        if (cleanEmail === DEMO_EMAIL && password === DEMO_PASSWORD) {
+          onDemoSignIn?.();
+          return;
+        }
+        const { error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
         if (authError) throw authError;
       } else if (mode === 'signup') {
         if (!fullName.trim() || !organisationName.trim()) {
@@ -277,7 +342,10 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError, onPa
 
           <button className='btn org' disabled={busy}>{busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : creating ? 'Create account' : mode === 'forgot' ? 'Send reset email' : 'Save new password'}</button>
 
-          {mode === 'signin' && <button type='button' className='account-link' onClick={() => switchMode('forgot')}>Forgot password?</button>}
+          {mode === 'signin' && <>
+            <p className='muted' style={{ textAlign: 'center', fontSize: 12 }}>Demo credentials open fictional local data only.</p>
+            <button type='button' className='account-link' onClick={() => switchMode('forgot')}>Forgot password?</button>
+          </>}
           {(mode === 'forgot' || mode === 'recovery') && <button type='button' className='account-link' onClick={() => switchMode('signin')}>Back to sign in</button>}
         </form>
       </section>
