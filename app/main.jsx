@@ -1361,22 +1361,57 @@ function LessonSetup({ state, update, lesson }) {
     staffOptions.push({ value: `legacy:${lesson.coach}`, label: `${lesson.coach} · Existing assignment`, name: lesson.coach });
   }
   function patchLesson(patch) {
-    let changed = { ...lesson, ...patch };
-    let learners = state.learners;
-    if (patch.programme) {
-      const programme = normaliseProgrammeName(patch.programme);
-      const nextGroup = defaultGroupForProgramme(programme, groups(state));
-      changed = { ...changed, programme, groupTemplateId: nextGroup, school: defaultSchoolForProgramme(programme), name: lesson.name?.startsWith('New ') ? defaultLessonNameForProgramme(programme) : lesson.name };
-      learners = learners.map(p => p.lesson === lesson.id ? { ...p, stage: firstStageForGroup(state, nextGroup) } : p);
-    }
-    if (patch.groupTemplateId) {
-      const groupStage = firstStageForGroup(state, patch.groupTemplateId);
-      learners = learners.map(p => p.lesson === lesson.id ? { ...p, stage: groupStage } : p);
-    }
-    update({ lessons: state.lessons.map(l => l.id === lesson.id ? changed : l), learners });
+    update(current => {
+      const currentLesson = current.lessons.find(item => item.id === lesson.id) || lesson;
+      let changed = { ...currentLesson, ...patch };
+      let learners = current.learners;
+
+      if (patch.programme) {
+        const programme = normaliseProgrammeName(patch.programme);
+        const nextGroup = defaultGroupForProgramme(programme, groups(current));
+        changed = {
+          ...changed,
+          programme,
+          groupTemplateId: nextGroup,
+          school: defaultSchoolForProgramme(programme),
+          name: currentLesson.name?.startsWith('New ') ? defaultLessonNameForProgramme(programme) : currentLesson.name
+        };
+        learners = learners.map(p => p.lesson === lesson.id ? { ...p, stage: firstStageForGroup(current, nextGroup) } : p);
+      }
+
+      if (patch.groupTemplateId) {
+        const groupStage = firstStageForGroup(current, patch.groupTemplateId);
+        learners = learners.map(p => p.lesson === lesson.id ? { ...p, stage: groupStage } : p);
+      }
+
+      return {
+        ...current,
+        lessons: current.lessons.map(item => item.id === lesson.id ? changed : item),
+        learners
+      };
+    });
   }
+
   function deleteLesson() {
-    update({ lessons: state.lessons.filter(l => l.id !== lesson.id), learners: state.learners.filter(p => p.lesson !== lesson.id), step: 'list', active: '' });
+    update(current => {
+      const sessionRecords = Object.fromEntries(
+        Object.entries(current.sessionRecords || {}).filter(([key, record]) =>
+          record?.lessonId !== lesson.id && !key.startsWith(`${lesson.id}::`)
+        )
+      );
+
+      return {
+        ...current,
+        lessons: current.lessons.filter(item => item.id !== lesson.id),
+        learners: current.learners.filter(person => person.lesson !== lesson.id),
+        sessionRecords,
+        step: 'list',
+        active: '',
+        activeOccurrenceDate: '',
+        selected: '',
+        selectedSkill: ''
+      };
+    });
   }
   return <>
     <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Select label='Coach' value={selectedCoachId || (lesson.coach ? `legacy:${lesson.coach}` : '')} onChange={v => {
@@ -1495,12 +1530,20 @@ function Register({ state, update, lesson }) {
   function addNames() {
     const newKids = createLearnersFromText(names, lesson.id, firstStageForGroup(state, lesson.groupTemplateId));
     if (!newKids.length) return;
-    update({ learners: [...state.learners, ...newKids], selected: newKids[0].id });
+    update(current => ({
+      ...current,
+      learners: [...current.learners, ...newKids],
+      selected: newKids[0].id
+    }));
     setNames('');
   }
 
   function removeLearner(id) {
-    update({ learners: state.learners.filter(p => p.id !== id), selected: state.selected === id ? '' : state.selected });
+    update(current => ({
+      ...current,
+      learners: current.learners.filter(p => p.id !== id),
+      selected: current.selected === id ? '' : current.selected
+    }));
   }
 
   return <>
