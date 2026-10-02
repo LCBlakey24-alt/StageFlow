@@ -430,12 +430,36 @@ function completionText(state, lesson, learner) {
     : `${passed}/${criteria.length} criteria passed`;
 }
 
+function learnerCompleteForLesson(state, lesson, learner) {
+  const criteria = learnerCriteria(state, lesson, learner);
+  const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only';
+  const criteriaComplete = criteria.length
+    ? criteria.every(item => learner?.res?.[item] === 'pass')
+    : lesson?.mode === 'National Curriculum only';
+  const ncComplete = !usesNationalCurriculum || nationalCurriculum.every(item => !!learner?.nc?.[item]);
+  return criteriaComplete && ncComplete;
+}
+
+function assessmentEntriesRecorded(state, lesson, learner) {
+  const criteriaMarks = learnerCriteria(state, lesson, learner)
+    .filter(item => isMarkedAssessment(learner?.res?.[item])).length;
+  const ncMarks = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only'
+    ? nationalCurriculumProgress(learner)
+    : 0;
+  return criteriaMarks + ncMarks;
+}
+
 function isMarkedAssessment(value) {
   return value === 'float' || value === 'pass' || String(value || '').startsWith('mark-');
 }
 
 function childAssessmentSummary(criteria, learner, lesson) {
-  if (!criteria.length) return noCriteriaLabel(lesson);
+  if (!criteria.length) {
+    const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only';
+    return usesNationalCurriculum
+      ? `${nationalCurriculumProgress(learner)}/${nationalCurriculum.length} National Curriculum`
+      : noCriteriaLabel(lesson);
+  }
   const marked = criteria.filter(skill => isMarkedAssessment(learner?.res?.[skill])).length;
   const passed = criteria.filter(skill => learner?.res?.[skill] === 'pass').length;
   if (!marked) return 'Not marked yet';
@@ -1874,10 +1898,10 @@ function SaveLesson({ state, update, lesson }) {
   const occurrenceDate = state.activeOccurrenceDate || localDateKey();
   const kids = state.learners.filter(p => p.lesson === lesson.id);
   const present = kids.filter(p => p.att !== 'Absent');
-  const criteria = groupCriteria(state, lesson);
-  const complete = present.filter(p => criteria.length && criteria.every(c => p.res?.[c] === 'pass'));
+  const complete = present.filter(p => learnerCompleteForLesson(state, lesson, p));
+  const recorded = present.reduce((total, learner) => total + assessmentEntriesRecorded(state, lesson, learner), 0);
   return <>
-    <section className='card'><h2>Session saved</h2><p className='muted'>{lesson.name}</p><div className='grid stat-grid'><div className='card stat-card'><h2>{present.length}</h2><p className='muted'>Present</p></div><div className='card stat-card'><h2>{complete.length}</h2><p className='muted'>Completed criteria</p></div><div className='card stat-card'><h2>{criteria.length}</h2><p className='muted'>Criteria assessed</p></div></div></section>
+    <section className='card'><h2>Session saved</h2><p className='muted'>{lesson.name}</p><div className='grid stat-grid'><div className='card stat-card'><h2>{present.length}</h2><p className='muted'>Present</p></div><div className='card stat-card'><h2>{complete.length}</h2><p className='muted'>Complete</p></div><div className='card stat-card'><h2>{recorded}</h2><p className='muted'>Assessments recorded</p></div></div></section>
     <section className='card'><h2>Session summary</h2>{present.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>
     <div className='footer'><button className='btn' onClick={() => update({ step: 'assess' })}>Back to assessment</button><button className='btn org' onClick={() => update(current => completeSessionOccurrence(current, lesson, occurrenceDate))}>Finish</button></div>
   </>;
@@ -1925,15 +1949,7 @@ function Reports({ state, update }) {
   const lessons = state.lessons.map(lesson => {
     const swimmers = state.learners.filter(p => p.lesson === lesson.id);
     const criteria = groupCriteria(state, lesson);
-    const complete = swimmers.filter(p => {
-      const applicable = learnerCriteria(state, lesson, p);
-      const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson.mode !== 'Stages only';
-      const criteriaComplete = applicable.length
-        ? applicable.every(c => p.res?.[c] === 'pass')
-        : lesson.mode === 'National Curriculum only';
-      const ncComplete = !usesNationalCurriculum || nationalCurriculum.every(item => !!p.nc?.[item]);
-      return criteriaComplete && ncComplete;
-    }).length;
+    const complete = swimmers.filter(p => learnerCompleteForLesson(state, lesson, p)).length;
     return { lesson, swimmers, criteria, complete };
   });
   return <><section className='hero compact-hero'><h1>Progress</h1></section><div className='grid2'>{lessons.map(({ lesson, swimmers, criteria, complete }) => <section className='card' key={lesson.id}><h2>{lesson.name}</h2><p className='muted'>{lessonProgramme(lesson)} · {groupLabel(state, lesson)}</p><span className='pill'>{swimmers.length} learners</span><span className='pill'>{criteria.length} criteria</span><span className='pill'>{complete} complete</span>{swimmers.map(p => <div className='folder' key={p.id}>{p.name}: {completionText(state, lesson, p)}</div>)}</section>)}</div><section className='card'><h2>End-of-term pack</h2><p className='muted'>This will later become the printable/export pack. For now, it is showing live progress from criteria groups.</p><button className='btn org' onClick={() => update(current => ({ ...current, audit: [`Progress pack checked`, ...(current.audit || [])] }))}>Log pack check</button></section></>;
