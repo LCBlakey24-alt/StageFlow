@@ -404,26 +404,6 @@ function groupOptionsForLesson(state, lesson) {
   const usable = matching.length ? matching : groups(state);
   return usable.map(g => ({ value: g.id, label: `${g.name} — ${g.detail || g.stages?.join(', ') || 'Criteria group'}` }));
 }
-function distanceNumber(value) { return parseInt(String(value || '0').replace('m', ''), 10) || 0; }
-function allCriteria(state) { return Object.values(state.framework?.criteria || stageCriteria || {}).flat(); }
-function criteriaDistanceMatch(criteria, stroke, metres) {
-  const text = String(criteria || '').toLowerCase();
-  const match = text.match(/(\d+)\s*m/);
-  if (!match) return false;
-  const required = Number(match[1]);
-  if (required > metres) return false;
-  const frontLike = text.includes('front') || text.includes('crawl');
-  const backLike = text.includes('back') || text.includes('backstroke');
-  const anyStroke = text.includes('choice of stroke') || text.includes('optional') || text.includes('distance achieved');
-  return stroke === 'front' ? frontLike || anyStroke : backLike || anyStroke;
-}
-function applyDistanceAutoPass(state, currentResults, stroke, metres) {
-  const next = { ...(currentResults || {}) };
-  allCriteria(state).forEach(criteria => {
-    if (criteriaDistanceMatch(criteria, stroke, metres)) next[criteria] = 'pass';
-  });
-  return next;
-}
 function noCriteriaLabel(lesson) {
   if (!lessonFeature(lesson, 'assessment', true)) return 'Assessment off';
   const usesNationalCurriculum = lessonProgramme(lesson) === 'School Swimming' && lesson?.mode !== 'Stages only';
@@ -1411,6 +1391,7 @@ function LessonSetup({ state, update, lesson }) {
   }
 
   function deleteLesson() {
+    if (!window.confirm('Delete this class/session, its current learners and its saved session history?')) return;
     update(current => {
       const sessionRecords = Object.fromEntries(
         Object.entries(current.sessionRecords || {}).filter(([key, record]) =>
@@ -1661,10 +1642,8 @@ function Assess({ state, update, lesson }) {
   }
 
   function setDistanceForLearner(learner, stroke, value) {
-    const metres = distanceNumber(value);
     changeLearner(learner.id, {
-      dist: { ...(learner.dist || {}), [stroke]: value },
-      res: applyDistanceAutoPass(state, learner.res, stroke, metres)
+      dist: { ...(learner.dist || {}), [stroke]: value }
     });
   }
 
@@ -1722,7 +1701,7 @@ function Assess({ state, update, lesson }) {
       <div className='assessment-head'><div><h2>{selected.name}</h2><p className='muted'>{childAssessmentSummary(selectedCriteria, selected, lesson)}{groupStages(state, lesson).length > 1 && selected.stage ? ` · ${selected.stage}` : ''}</p></div></div>
       {lesson.mode !== 'National Curriculum only' && <>
         <div className='grid2'><Distance label='Distance front' value={selected.dist?.front || '0m'} onChange={v => setDistanceForLearner(selected, 'front', v)} /><Distance label='Distance back' value={selected.dist?.back || '0m'} onChange={v => setDistanceForLearner(selected, 'back', v)} /></div>
-        <p className='muted'>Higher distances also mark matching lower-distance skills.</p>
+        <p className='muted'>Distance is recorded separately. Mark technique and skill criteria explicitly.</p>
         {selectedCriteria.map(skill => <SkillScore key={skill} criteria={skill} value={selected.res?.[skill]} options={scoreOptions} onScore={v => scoreLearner(selected, skill, v)} />)}
       </>}
       {showNationalCurriculum && <>
@@ -1900,7 +1879,11 @@ function HealthCheck({ state, update }) {
   const testSteps = ['Open Home', 'Open Timetable', 'Create or edit a class/session', 'Choose a criteria group', 'Paste learners', 'Complete register', 'Assess by name', 'Assess by skill', 'Save session', 'Open Reports', 'Open Settings'];
   return <><section className='hero'><p>Priority 1</p><h1>Stability health check</h1><p>{percent}% of automatic checks are passing.</p></section><div className='grid'><div className='card'><h2>{percent}%</h2><p className='muted'>Automatic stability score</p></div><div className='card'><h2>{done}/{items.length}</h2><p className='muted'>Checks passing</p></div><div className='card'><h2>{state.audit?.length || 0}</h2><p className='muted'>Audit entries</p></div></div><section className='card'><h2>{failed.length ? 'Needs checks' : 'Ready for manual sign-off'}</h2><p className='muted'>{failed.length ? 'Fix the warnings below before moving on.' : 'Run the manual test route once on your phone.'}</p></section><section className='card'><h2>✅ Passed</h2>{items.filter(item => item.done).map(item => <div className='folder' key={item.label}>✅ {item.label}<p className='muted'>{item.detail}</p></div>)}</section><section className='card'><h2>⚠️ Needs fixing</h2>{failed.length ? failed.map(item => <div className='folder' key={item.label}>⚠️ {item.label}<p className='muted'>{item.detail}</p></div>) : <div className='folder'>✅ Nothing currently flagged.</div>}</section><section className='card'><h2>Manual live test route</h2>{testSteps.map((step, index) => <div className='folder' key={step}>#{index + 1} {step}</div>)}</section><div className='footer'>{cloudAccount
   ? <button className='btn' onClick={() => location.reload()}>Reload cloud workspace</button>
-  : <button className='btn' onClick={() => { clearAppState(); location.reload(); }}>Reset demo data</button>}
+  : <button className='btn' onClick={() => {
+      if (!window.confirm('Reset Stage Flow demo data on this device? This clears your local test changes.')) return;
+      clearAppState();
+      location.reload();
+    }}>Reset demo data</button>}
   <button className='btn org' onClick={() => update({ screen: 'timetable', step: 'list' })}>Test timetable</button>
 </div></>;
 }

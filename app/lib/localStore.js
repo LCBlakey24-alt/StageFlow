@@ -20,7 +20,11 @@ export function saveAppState(state) {
 }
 
 export function clearAppState() {
-  window.localStorage.removeItem(KEY);
+  try {
+    window.localStorage.removeItem(KEY);
+  } catch {
+    // Ignore locked-down/private storage failures.
+  }
 }
 
 function mergeUnique(base = [], extra = []) {

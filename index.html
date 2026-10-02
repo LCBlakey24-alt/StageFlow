@@ -29,25 +29,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      document.addEventListener('click', function (event) {
-        const button = event.target.closest('button');
-        if (!button) return;
-        const label = (button.textContent || '').trim().toLowerCase();
-        const isReset = label === 'reset' || label === 'reset app data';
-        const isDelete = label === 'delete';
-        if (isReset && !window.confirm('Reset Stage Flow demo data on this device? This clears your local test changes.')) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-        }
-        if (isDelete && !window.confirm('Delete this class/session and its linked swimmers from this demo?')) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-        }
-      }, true);
-    </script>
     <script type="module" src="/app/main.jsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
