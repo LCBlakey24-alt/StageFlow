@@ -21,7 +21,7 @@ function same(a: unknown, b: unknown) {
 function lessonAssignedToCaller(lesson: any, caller: any) {
   const coachId = String(lesson?.coachId || "");
   const accountId = `account:${caller.id}`;
-  if (coachId && (coachId === caller.id || coachId === accountId)) return true;
+  if (coachId) return coachId === caller.id || coachId === accountId;
   return String(lesson?.coach || "").trim() === String(caller.display_name || "").trim();
 }
 

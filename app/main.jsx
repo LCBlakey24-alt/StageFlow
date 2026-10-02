@@ -58,7 +58,7 @@ function lessonAssignedToStaff(lesson, staff) {
     staff.accountStaffId ? `account:${staff.accountStaffId}` : ''
   ].filter(Boolean));
 
-  if (assignment && ids.has(assignment)) return true;
+  if (assignment) return ids.has(assignment);
   return String(lesson.coach || '').trim() === String(staff.name || '').trim();
 }
 const durations = [15, 30, 45, 60, 75, 90, 105, 120];
