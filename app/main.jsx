@@ -8,7 +8,7 @@ import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib
 import { StageFlowAccountGate, StaffAccountsPanel } from './lib/accountAuth.jsx';
 import { createOrganisationWorkspace, loadOrganisationStaff, loadOrganisationWorkspace, mergeWorkspaceSnapshot, saveOrganisationWorkspace, workspaceSnapshot } from './lib/cloudWorkspace.js';
 
-const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
 
 function todayWeekday() {
@@ -195,6 +195,7 @@ function defaultLessonNameForProgramme(programme) {
   if (normal === 'Private Lessons') return 'New Private Lesson';
   if (normal === 'Gymnastics') return 'New Gymnastics Session';
   if (normal === 'School PE') return 'New PE Class';
+  if (normal === 'Custom') return 'New Custom Activity';
   return 'New Class / Session';
 }
 function visibleLessonsForDay(state, day) {
@@ -876,6 +877,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
   const [gap, setGap] = useState(0);
   const [venue, setVenue] = useState(defaultSchoolForProgramme('School Swimming'));
   const [features, setFeatures] = useState({ assessment: true, notes: true, evidence: false });
+  const [customName, setCustomName] = useState('Custom activity');
 
   function typeLabel(value) {
     if (value === 'School Swimming') return 'Swimming';
@@ -883,14 +885,19 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     if (value === 'Evening Swim 1:1') return '1:1 swimming';
     if (value === 'Private Lessons') return 'Private swimming';
     if (value === 'School PE') return 'PE';
+    if (value === 'Custom') return 'Custom activity';
     return value;
   }
 
   function availableStagesFor(nextProgramme) {
-    const fromFramework = criteriaStagesForProgramme(nextProgramme, state.framework?.stages || []);
+    const normal = normaliseProgrammeName(nextProgramme);
     const fromGroups = groups(state)
-      .filter(group => programmeForGroup(group) === nextProgramme)
+      .filter(group => programmeForGroup(group) === normal)
       .flatMap(group => group.stages || []);
+
+    if (normal === 'Custom') return [...new Set(fromGroups)];
+
+    const fromFramework = criteriaStagesForProgramme(normal, state.framework?.stages || []);
     return [...new Set([...fromFramework, ...fromGroups])];
   }
 
@@ -918,6 +925,9 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     const nextDefaultStage = nextStages[0] || '';
     setProgramme(normal);
     setVenue(defaultSchoolForProgramme(normal));
+    if (normal === 'Custom' && nextStages.length === 0) {
+      setFeatures(current => ({ ...current, assessment: false }));
+    }
     setSessions(current => current.map(item => ({ ...item, stage: nextDefaultStage })));
   }
 
@@ -941,12 +951,12 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
       );
       if (exact) return exact.id;
 
-      const id = `auto-${slug(programme)}-${slug(stage)}`;
+      const id = `auto-${slug(programme)}-${slug(stage || (programme === 'Custom' ? customName : 'general'))}`;
       if (!templates.some(group => group.id === id)) {
         templates.push({
           id,
-          name: stage || typeLabel(programme),
-          detail: stage ? `${stage} criteria` : `${typeLabel(programme)} criteria`,
+          name: stage || (programme === 'Custom' ? (customName.trim() || 'Custom activity') : typeLabel(programme)),
+          detail: stage ? `${stage} criteria` : (features.assessment ? `${typeLabel(programme)} criteria` : 'No assessment criteria'),
           stages: stage ? [stage] : [],
           colour: 'blue',
           programme
@@ -958,7 +968,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     const now = Date.now();
     const newLessons = sessions.map((session, index) => {
       const groupId = groupIdForStage(session.stage);
-      const label = session.stage || typeLabel(programme);
+      const label = programme === 'Custom' ? (customName.trim() || 'Custom activity') : (session.stage || typeLabel(programme));
       return {
         id: `l${now}-${index + 1}`,
         day,
@@ -988,7 +998,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     onClose();
   }
 
-  const steps = ['Lesson type', 'When', 'Stages'];
+  const steps = ['Lesson type', 'When', 'Sessions & tools'];
 
   return <section className='card session-wizard'>
     <div className='session-wizard-top'>
@@ -1007,8 +1017,12 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     {step === 0 && <div>
       <p className='wizard-question'>What are you teaching?</p>
       <div className='wizard-choice-grid lesson-type-grid'>
-        {programmes.filter(item => item !== 'Custom').map(option => <button key={option} className={'wizard-choice ' + (programme === option ? 'on' : '')} onClick={() => chooseProgramme(option)}><strong>{typeLabel(option)}</strong></button>)}
+        {programmes.map(option => <button key={option} className={'wizard-choice ' + (programme === option ? 'on' : '')} onClick={() => chooseProgramme(option)}><strong>{typeLabel(option)}</strong></button>)}
       </div>
+      {programme === 'Custom' && <div className='custom-activity-name'>
+        <Field label='Activity / club name' value={customName} onChange={setCustomName} placeholder='Basketball club, rebound therapy, dance…' />
+        <p className='muted'>Custom activities can be timetable-only, or you can add criteria groups later in Settings.</p>
+      </div>}
     </div>}
 
     {step === 1 && <div className='wizard-schedule'>
@@ -1052,12 +1066,17 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
             <span>Session {index + 1}</span>
             <input type='time' value={session.time} onChange={event => patchSession(index, { time: event.target.value })} />
           </div>
-          <div className='field'>
+          {features.assessment ? <div className='field'>
             <label>Stage / criteria</label>
-            <select value={session.stage || ''} onChange={event => patchSession(index, { stage: event.target.value })}>
-              {stageOptions.map(stage => <option key={stage} value={stage}>{stage}</option>)}
-            </select>
-          </div>
+            {stageOptions.length
+              ? <select value={session.stage || ''} onChange={event => patchSession(index, { stage: event.target.value })}>
+                  {stageOptions.map(stage => <option key={stage} value={stage}>{stage}</option>)}
+                </select>
+              : <div className='wizard-static-field'>No criteria group configured</div>}
+          </div> : <div className='field'>
+            <label>Assessment</label>
+            <div className='wizard-static-field'>Off for this session</div>
+          </div>}
           <div className='field'>
             <label>Coach</label>
             <select value={session.coach || ''} onChange={event => patchSession(index, { coach: event.target.value })}>
