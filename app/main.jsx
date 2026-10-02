@@ -6,7 +6,7 @@ import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCrit
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
 import { StageFlowAccountGate, StaffAccountsPanel } from './lib/accountAuth.jsx';
-import { createOrganisationWorkspace, loadOrganisationStaff, loadOrganisationWorkspace, mergeWorkspaceSnapshot, saveOrganisationWorkspace, workspaceSnapshot } from './lib/cloudWorkspace.js';
+import { createOrganisationWorkspace, loadOrganisationStaff, loadOrganisationWorkspace, mergeWorkspaceSnapshot, newOrganisationWorkspace, saveOrganisationWorkspace, workspaceSnapshot } from './lib/cloudWorkspace.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
@@ -48,6 +48,19 @@ function coachSessionStaff(state) {
 
   const id = readCoachSessionStaffId();
   return (state.staff || []).find(staff => staff.id === id) || null;
+}
+
+function lessonAssignedToStaff(lesson, staff) {
+  if (!lesson || !staff) return false;
+  const assignment = String(lesson.coachId || '');
+  const ids = new Set([
+    String(staff.id || ''),
+    String(staff.accountStaffId || ''),
+    staff.accountStaffId ? `account:${staff.accountStaffId}` : ''
+  ].filter(Boolean));
+
+  if (assignment && ids.has(assignment)) return true;
+  return String(lesson.coach || '').trim() === String(staff.name || '').trim();
 }
 const durations = [15, 30, 45, 60, 75, 90, 105, 120];
 const modes = ['Stages + National Curriculum', 'Stages only', 'National Curriculum only'];
@@ -542,7 +555,7 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
     }
 
     let cancelled = false;
-    const initialSnapshot = workspaceSnapshot(state);
+    const initialSnapshot = newOrganisationWorkspace(state);
     cloudReadyRef.current = false;
     skipCloudSaveRef.current = true;
     setCloudStatus('loading');
@@ -687,7 +700,7 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
   const currentScreen = screens.includes(state.screen) ? state.screen : 'home';
   const lessonAllowed = !!lesson && !!activeStaff && (
     activeStaff.role === 'Admin' ||
-    (activeStaff.sessions !== false && activeStaff.learners !== false && lesson.coach === activeStaff.name)
+    (activeStaff.sessions !== false && activeStaff.learners !== false && lessonAssignedToStaff(lesson, activeStaff))
   );
 
   return <>
@@ -865,7 +878,7 @@ function AdminHome({ state, update, staff }) {
 function CoachHome({ state, update, staff }) {
   const day = todayWeekday();
   const lessons = [...state.lessons]
-    .filter(lesson => lessonDay(lesson) === day && lesson.coach === staff.name)
+    .filter(lesson => lessonDay(lesson) === day && lessonAssignedToStaff(lesson, staff))
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 
   return <>
@@ -979,7 +992,7 @@ function CoachToday({ state, update, staff }) {
   const day = todayWeekday();
   const lessons = [...state.lessons]
     .filter(lesson => lessonDay(lesson) === day)
-    .filter(lesson => staff.role === 'Admin' || lesson.coach === staff.name)
+    .filter(lesson => staff.role === 'Admin' || lessonAssignedToStaff(lesson, staff))
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 
   return <section className='card coach-day-card'>
@@ -992,7 +1005,7 @@ function CoachToday({ state, update, staff }) {
 
 function CoachWeek({ state, update, staff }) {
   const coachLessons = [...state.lessons]
-    .filter(lesson => staff.role === 'Admin' || lesson.coach === staff.name)
+    .filter(lesson => staff.role === 'Admin' || lessonAssignedToStaff(lesson, staff))
     .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 
   return <div className='coach-week-grid'>
@@ -1045,17 +1058,18 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
 
   const stageOptions = availableStagesFor(programme);
   const defaultStage = stageOptions[0] || '';
-  const [sessions, setSessions] = useState([{ time: '09:00', stage: defaultStage, coach: '' }]);
+  const [sessions, setSessions] = useState([{ time: '09:00', stage: defaultStage, coachId: '', coach: '' }]);
 
   const staffOptions = [
-    { value: '', label: 'Unassigned' },
-    ...(state.staff || []).map(person => ({ value: person.name, label: `${person.name} · ${person.role}` }))
+    { value: '', label: 'Unassigned', name: '' },
+    ...(state.staff || []).map(person => ({ value: person.id, label: `${person.name} · ${person.role}`, name: person.name }))
   ];
 
   useEffect(() => {
     const generated = Array.from({ length: count }, (_, index) => ({
       time: addMinutes(startTime, index * (Number(duration) + Number(gap))),
       stage: sessions[index]?.stage || defaultStage,
+      coachId: sessions[index]?.coachId || '',
       coach: sessions[index]?.coach || ''
     }));
     setSessions(generated);
@@ -1111,6 +1125,7 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
     const newLessons = sessions.map((session, index) => {
       const groupId = groupIdForStage(session.stage);
       const label = programme === 'Custom' ? (customName.trim() || 'Custom activity') : (session.stage || typeLabel(programme));
+      const assignedStaff = (state.staff || []).find(person => person.id === session.coachId);
       return {
         id: `l${now}-${index + 1}`,
         day,
@@ -1119,7 +1134,8 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
         school: venue || defaultSchoolForProgramme(programme),
         year: 'Year group',
         className: '',
-        coach: session.coach || '',
+        coachId: session.coachId || '',
+        coach: assignedStaff?.name || session.coach || '',
         name: count > 1 ? `${label} · Session ${index + 1}` : label,
         programme,
         groupTemplateId: groupId,
@@ -1221,7 +1237,10 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
           </div>}
           <div className='field'>
             <label>Coach</label>
-            <select value={session.coach || ''} onChange={event => patchSession(index, { coach: event.target.value })}>
+            <select value={session.coachId || ''} onChange={event => {
+              const option = staffOptions.find(item => item.value === event.target.value);
+              patchSession(index, { coachId: event.target.value, coach: option?.name || '' });
+            }}>
               {staffOptions.map(option => <option key={option.value || 'unassigned'} value={option.value}>{option.label}</option>)}
             </select>
           </div>
@@ -1335,11 +1354,12 @@ function LessonSetup({ state, update, lesson }) {
     evidence: lessonFeature(lesson, 'evidence', true)
   };
   const staffOptions = [
-    { value: '', label: 'Unassigned' },
-    ...(state.staff || []).map(person => ({ value: person.name, label: `${person.name} · ${person.role}` }))
+    { value: '', label: 'Unassigned', name: '' },
+    ...(state.staff || []).map(person => ({ value: person.id, label: `${person.name} · ${person.role}`, name: person.name }))
   ];
-  if (lesson.coach && !staffOptions.some(option => option.value === lesson.coach)) {
-    staffOptions.push({ value: lesson.coach, label: `${lesson.coach} · Existing assignment` });
+  const selectedCoachId = lesson.coachId || (state.staff || []).find(person => person.name === lesson.coach)?.id || '';
+  if (lesson.coach && !selectedCoachId) {
+    staffOptions.push({ value: `legacy:${lesson.coach}`, label: `${lesson.coach} · Existing assignment`, name: lesson.coach });
   }
   function patchLesson(patch) {
     let changed = { ...lesson, ...patch };
@@ -1360,7 +1380,10 @@ function LessonSetup({ state, update, lesson }) {
     update({ lessons: state.lessons.filter(l => l.id !== lesson.id), learners: state.learners.filter(p => p.lesson !== lesson.id), step: 'list', active: '' });
   }
   return <>
-    <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Select label='Coach' value={lesson.coach || ''} onChange={v => patchLesson({ coach: v })} options={staffOptions} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
+    <section className='card assessment-choice'><h2>Class/session setup</h2><div className='grid2'><Select label='Programme' value={lessonProgramme(lesson)} onChange={v => patchLesson({ programme: v })} options={programmes.map(x => ({ value: x, label: x }))} /><Select label='Criteria group' value={lesson.groupTemplateId || ''} onChange={v => patchLesson({ groupTemplateId: v })} options={templateOptions} /><Field label='Class/session name' value={lesson.name} onChange={v => patchLesson({ name: v })} /><Field label='School / venue' value={lesson.school} onChange={v => patchLesson({ school: v })} /><Field label='Year / class' value={lesson.year} onChange={v => patchLesson({ year: v })} /><Select label='Coach' value={selectedCoachId || (lesson.coach ? `legacy:${lesson.coach}` : '')} onChange={v => {
+  const option = staffOptions.find(item => item.value === v);
+  patchLesson({ coachId: v.startsWith('legacy:') ? '' : v, coach: option?.name || '' });
+}} options={staffOptions} /><Select label='Day' value={lessonDay(lesson)} onChange={v => patchLesson({ day: v })} options={days.map(x => ({ value: x, label: x }))} /><Field label='Start time' value={lesson.time} onChange={v => patchLesson({ time: v })} /><Select label='Duration' value={String(lesson.duration || 30)} onChange={v => patchLesson({ duration: Number(v) || 30 })} options={durations.map(x => ({ value: String(x), label: `${x} minutes` }))} /><Select label='Assessment mode' value={lesson.mode || modes[0]} onChange={v => patchLesson({ mode: v })} options={modes.map(x => ({ value: x, label: x }))} /></div></section>
     <section className='card session-tools-card'>
       <h2>Session tools</h2>
       <p className='muted'>Turn features on only when this session needs them.</p>

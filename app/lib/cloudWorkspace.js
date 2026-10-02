@@ -9,6 +9,22 @@ export function workspaceSnapshot(state) {
   }, {});
 }
 
+export function newOrganisationWorkspace(state) {
+  const snapshot = workspaceSnapshot(state);
+  return {
+    ...snapshot,
+    lessons: [],
+    learners: [],
+    sessionRecords: {},
+    audit: [],
+    pack: {
+      ...(snapshot.pack || {}),
+      email: '',
+      cc: ''
+    }
+  };
+}
+
 export function mergeWorkspaceSnapshot(current, shared) {
   if (!shared || typeof shared !== 'object') return current;
   const merged = { ...current };
@@ -73,26 +89,20 @@ export async function saveOrganisationWorkspace(organisationId, state, expectedR
     return { revision: expectedRevision, conflict: false };
   }
 
-  const sessionResult = await supabase.auth.getSession();
-  const userId = sessionResult.data.session?.user?.id || null;
-  const nextRevision = Math.max(1, Number(expectedRevision) + 1);
-
-  const { data, error } = await supabase
-    .from('organisation_workspaces')
-    .update({
-      state: workspaceSnapshot(state),
-      revision: nextRevision,
-      updated_by: userId,
-      updated_at: new Date().toISOString()
-    })
-    .eq('organisation_id', organisationId)
-    .eq('revision', Number(expectedRevision) || 0)
-    .select('revision')
-    .maybeSingle();
+  const { data, error } = await supabase.functions.invoke('save-workspace', {
+    body: {
+      organisationId,
+      expectedRevision: Number(expectedRevision) || 0,
+      state: workspaceSnapshot(state)
+    }
+  });
 
   if (error) throw error;
-  if (!data) return { revision: Number(expectedRevision) || 0, conflict: true };
-  return { revision: Number(data.revision) || nextRevision, conflict: false };
+  if (data?.error) throw new Error(data.error);
+  return {
+    revision: Number(data?.revision) || Number(expectedRevision) || 0,
+    conflict: !!data?.conflict
+  };
 }
 
 export async function loadOrganisationStaff(organisationId) {

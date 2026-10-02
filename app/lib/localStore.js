@@ -125,9 +125,10 @@ export function normaliseState(saved, fallback) {
     ? framework.groupTemplates.map(g => `${g.name}: ${g.detail || ''}`)
     : framework.groups || [];
 
-  const savedLessons = Array.isArray(base.lessons) ? base.lessons : [];
-  const reviewLessons = (fallback.lessons || []).filter(lesson => lesson.id === 'l7' && !savedLessons.some(savedLesson => savedLesson.id === lesson.id));
-  const lessons = savedLessons.length ? [...savedLessons, ...reviewLessons] : fallback.lessons;
+  const hasSavedLessons = !!saved && Object.prototype.hasOwnProperty.call(saved, 'lessons');
+  const lessons = hasSavedLessons && Array.isArray(saved.lessons)
+    ? saved.lessons
+    : (fallback.lessons || []);
   const safeLessons = lessons.map((lesson, index) => {
     const programme = inferProgramme(lesson, framework.area || fallback.framework?.area);
     return {
@@ -139,6 +140,7 @@ export function normaliseState(saved, fallback) {
       school: normaliseProgrammeName(lesson.school) || (programme === 'Evening Swim 1:1' ? 'Evening Swim 1:1' : programme === 'Evening Swim Group' ? 'Evening Swim Group' : 'School / Venue'),
       year: lesson.year || 'Year group',
       className: lesson.className || '',
+      coachId: lesson.coachId || '',
       coach: lesson.coach === 'Sarah' ? 'Lewis' : (lesson.coach || ''),
       name: lesson.name || 'Untitled lesson',
       groupTemplateId: defaultGroupForProgramme(programme, framework, lesson.groupTemplateId),
@@ -153,12 +155,10 @@ export function normaliseState(saved, fallback) {
     };
   });
 
-  const savedLearners = Array.isArray(base.learners) ? base.learners : [];
-  const reviewLearners = (fallback.learners || []).filter(learner =>
-    String(learner.id || '').startsWith('demo-') &&
-    !savedLearners.some(savedLearner => savedLearner.id === learner.id)
-  );
-  const learners = savedLearners.length ? [...savedLearners, ...reviewLearners] : fallback.learners;
+  const hasSavedLearners = !!saved && Object.prototype.hasOwnProperty.call(saved, 'learners');
+  const learners = hasSavedLearners && Array.isArray(saved.learners)
+    ? saved.learners
+    : (fallback.learners || []);
   const safeLearners = learners.map((learner, index) => {
     const safeLearner = {
       id: learner.id || `learner-${index}`,
@@ -182,6 +182,15 @@ export function normaliseState(saved, fallback) {
     };
   });
 
+  const requestedActive = base.active || '';
+  const safeActive = safeLessons.some(lesson => lesson.id === requestedActive)
+    ? requestedActive
+    : (safeLessons[0]?.id || '');
+  const requestedSelected = base.selected || '';
+  const safeSelected = safeLearners.some(learner => learner.id === requestedSelected)
+    ? requestedSelected
+    : '';
+
   return {
     ...base,
     framework,
@@ -195,9 +204,9 @@ export function normaliseState(saved, fallback) {
     currentDay: base.currentDay || fallback.currentDay || 'Tuesday',
     timetableFilter: base.timetableFilter || fallback.timetableFilter || 'All',
     draft: base.draft || null,
-    active: base.active || safeLessons[0]?.id || '',
-    activeOccurrenceDate: base.activeOccurrenceDate || '',
-    selected: base.selected || '',
+    active: safeActive,
+    activeOccurrenceDate: safeActive ? (base.activeOccurrenceDate || '') : '',
+    selected: safeSelected,
     screen: base.screen || 'home',
     step: base.step || 'list',
     tab: base.tab || 'framework'

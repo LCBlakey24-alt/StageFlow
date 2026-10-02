@@ -42,13 +42,58 @@ async function loadLinkedStaff(userId) {
   return normaliseStaff(data);
 }
 
+function requestedAuthAction() {
+  try {
+    const value = new URLSearchParams(window.location.search || '').get('auth');
+    return value === 'invite' || value === 'recovery' ? value : '';
+  } catch {
+    return '';
+  }
+}
+
 export function StageFlowAccountGate({ children }) {
   const [status, setStatus] = useState(supabaseConfigured ? 'loading' : 'demo');
   const [session, setSession] = useState(null);
   const [staff, setStaff] = useState(null);
-  const [mode, setMode] = useState('signin');
+  const [mode, setMode] = useState(() => requestedAuthAction() || 'signin');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  async function applySession(nextSession, allowAuthAction = true) {
+    setSession(nextSession || null);
+    if (!nextSession?.user?.id) {
+      storeLinkedStaff(null);
+      setStaff(null);
+      setStatus('signed-out');
+      return;
+    }
+
+    const action = allowAuthAction ? requestedAuthAction() : '';
+    if (action) {
+      setMode(action);
+      setStatus('auth-action');
+      return;
+    }
+
+    try {
+      const linkedStaff = await loadLinkedStaff(nextSession.user.id);
+      setStaff(linkedStaff);
+      storeLinkedStaff(linkedStaff);
+      setStatus(linkedStaff ? 'ready' : 'unlinked');
+    } catch (loadError) {
+      console.error('Stage Flow account link failed', loadError);
+      setError('Your account signed in, but Stage Flow could not load its staff profile.');
+      setStatus('unlinked');
+    }
+  }
+
+  async function completePasswordSetup() {
+    try {
+      window.history.replaceState({}, '', window.location.pathname || '/');
+    } catch {}
+    setMode('signin');
+    await applySession(session, false);
+  }
 
   useEffect(() => {
     if (!supabaseConfigured) {
@@ -59,42 +104,25 @@ export function StageFlowAccountGate({ children }) {
 
     let live = true;
 
-    async function applySession(nextSession) {
-      if (!live) return;
-      setSession(nextSession || null);
-      if (!nextSession?.user?.id) {
-        storeLinkedStaff(null);
-        setStaff(null);
-        setStatus('signed-out');
-        return;
-      }
-
-      try {
-        const linkedStaff = await loadLinkedStaff(nextSession.user.id);
-        if (!live) return;
-        setStaff(linkedStaff);
-        storeLinkedStaff(linkedStaff);
-        setStatus(linkedStaff ? 'ready' : 'unlinked');
-      } catch (loadError) {
-        console.error('Stage Flow account link failed', loadError);
-        if (!live) return;
-        setError('Your account signed in, but Stage Flow could not load its staff profile.');
-        setStatus('unlinked');
-      }
-    }
-
     supabase.auth.getSession().then(({ data, error: sessionError }) => {
       if (sessionError) {
         console.error('Stage Flow auth session failed', sessionError);
         if (live) setStatus('signed-out');
         return;
       }
-      applySession(data.session);
+      if (live) applySession(data.session);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      if (event === 'PASSWORD_RECOVERY') setMode('recovery');
-      window.setTimeout(() => applySession(nextSession), 0);
+      if (event === 'PASSWORD_RECOVERY') {
+        setSession(nextSession || null);
+        setMode('recovery');
+        setStatus('auth-action');
+        return;
+      }
+      window.setTimeout(() => {
+        if (live) applySession(nextSession);
+      }, 0);
     });
 
     return () => {
@@ -117,6 +145,18 @@ export function StageFlowAccountGate({ children }) {
   }
 
   if (status === 'loading') return <div className='account-loading'>Loading Stage Flow…</div>;
+
+  if (status === 'auth-action' && session) {
+    return <AccountForm
+      mode={mode}
+      setMode={setMode}
+      message={message}
+      setMessage={setMessage}
+      error={error}
+      setError={setError}
+      onPasswordSet={completePasswordSetup}
+    />;
+  }
 
   if (status === 'ready' && session && staff) {
     return children({ accountMode: true, signOut, staff });
@@ -144,7 +184,7 @@ export function StageFlowAccountGate({ children }) {
   />;
 }
 
-function AccountForm({ mode, setMode, message, setMessage, error, setError }) {
+function AccountForm({ mode, setMode, message, setMessage, error, setError, onPasswordSet = null }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -191,11 +231,12 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError }) {
         });
         if (authError) throw authError;
         setMessage('If an account can receive a reset email, instructions have been sent.');
-      } else if (mode === 'recovery') {
+      } else if (mode === 'recovery' || mode === 'invite') {
         if (password.length < 8) throw new Error('Use at least 8 characters for your new password.');
         const { error: authError } = await supabase.auth.updateUser({ password });
         if (authError) throw authError;
-        setMessage('Password updated. You can continue into Stage Flow.');
+        setMessage(mode === 'invite' ? 'Your Stage Flow password is set.' : 'Password updated.');
+        if (onPasswordSet) await onPasswordSet();
       }
     } catch (authError) {
       setError(authError?.message || 'Stage Flow could not complete that account request.');
@@ -205,7 +246,8 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError }) {
   }
 
   const creating = mode === 'signup';
-  const recovery = mode === 'recovery';
+  const passwordSetup = mode === 'recovery' || mode === 'invite';
+  const recovery = passwordSetup;
 
   return <div className='account-gate'>
     <div className='account-shell'>
@@ -218,8 +260,8 @@ function AccountForm({ mode, setMode, message, setMessage, error, setError }) {
 
         <form className='account-form' onSubmit={submit}>
           <div>
-            <h2>{mode === 'signin' ? 'Staff sign in' : creating ? 'Create your Stage Flow organisation' : mode === 'forgot' ? 'Reset password' : 'Choose a new password'}</h2>
-            <p className='muted'>{creating ? 'The first account becomes the organisation owner. Staff accounts are invited separately.' : mode === 'signin' ? 'Use the email linked to your Stage Flow staff account.' : mode === 'forgot' ? 'Enter your account email and we will send reset instructions.' : 'Enter the new password for your Stage Flow account.'}</p>
+            <h2>{mode === 'signin' ? 'Staff sign in' : creating ? 'Create your Stage Flow organisation' : mode === 'forgot' ? 'Reset password' : mode === 'invite' ? 'Create your staff password' : 'Choose a new password'}</h2>
+            <p className='muted'>{creating ? 'The first account becomes the organisation owner. Staff accounts are invited separately.' : mode === 'signin' ? 'Use the email linked to your Stage Flow staff account.' : mode === 'forgot' ? 'Enter your account email and we will send reset instructions.' : mode === 'invite' ? 'Set a password for future Stage Flow sign-ins.' : 'Enter the new password for your Stage Flow account.'}</p>
           </div>
 
           {creating && <>
