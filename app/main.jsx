@@ -5,7 +5,8 @@ import { demoFramework, demoLearners, demoLessons, nationalCurriculum, stageCrit
 import { loadAppState, saveAppState, clearAppState } from './lib/localStore.js';
 import { listLocalEvidence, saveLocalEvidence, deleteLocalEvidence } from './lib/localMediaStore.js';
 import { StageFlowAccountGate, StaffAccountsPanel } from './lib/accountAuth.jsx';
-import { createOrganisationWorkspace, loadOrganisationStaff, loadOrganisationWorkspace, mergeWorkspaceSnapshot, newOrganisationWorkspace, saveOrganisationWorkspace, workspaceSnapshot } from './lib/cloudWorkspace.js';
+import { loadOrganisationStaff } from './lib/cloudWorkspace.js';
+import { loadStructuredOrganisation, saveStructuredOrganisation, structuredSnapshot } from './lib/structuredCloud.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const COACH_SESSION_KEY = 'stageflow-coach-session';
@@ -465,9 +466,25 @@ function childAssessmentSummary(criteria, learner, lesson) {
   if (!marked) return 'Not marked yet';
   return `${marked}/${criteria.length} marked · ${passed} passed`;
 }
+function newEntityId() {
+  try {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } catch {
+    // Modern browsers all provide crypto; this fallback still preserves UUID shape.
+    const seed = `${Date.now()}${Math.random()}`.replace(/\D/g, '').padEnd(32, '0').slice(0, 32);
+    return `${seed.slice(0, 8)}-${seed.slice(8, 12)}-4${seed.slice(13, 16)}-8${seed.slice(17, 20)}-${seed.slice(20, 32)}`;
+  }
+}
+
 function createLearnersFromText(text, lessonId, groupStage) {
-  return (text || '').split('\n').map(x => x.trim()).filter(Boolean).map((name, index) => ({
-    id: 'p' + Date.now() + index,
+  return (text || '').split('\n').map(x => x.trim()).filter(Boolean).map(name => ({
+    id: newEntityId(),
     lesson: lessonId,
     name,
     stage: groupStage,
@@ -554,10 +571,10 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
   const [authVersion, setAuthVersion] = useState(0);
   const [cloudStatus, setCloudStatus] = useState(accountMode ? 'loading' : 'local');
   const [cloudMessage, setCloudMessage] = useState('');
-  const cloudRevisionRef = useRef(0);
   const cloudReadyRef = useRef(!accountMode);
   const skipCloudSaveRef = useRef(true);
   const cloudSaveQueueRef = useRef(Promise.resolve());
+  const cloudSnapshotRef = useRef(null);
   const accountOrgId = accountStaff?.organisationId || '';
 
   async function enableHydrotherapy() {
@@ -588,53 +605,60 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
     }
 
     let cancelled = false;
-    const initialSnapshot = newOrganisationWorkspace(state);
+    const safeDefaults = {
+      ...state,
+      lessons: [],
+      learners: [],
+      sessionRecords: {},
+      audit: [],
+      pack: { ...(state.pack || {}), email: '', cc: '' }
+    };
+
     cloudReadyRef.current = false;
     skipCloudSaveRef.current = true;
     setCloudStatus('loading');
     setCloudMessage('');
 
-    async function bootCloudWorkspace() {
+    async function bootStructuredCloud() {
       try {
         const [remote, organisationStaff] = await Promise.all([
-          loadOrganisationWorkspace(accountOrgId),
+          loadStructuredOrganisation(accountOrgId, safeDefaults),
           loadOrganisationStaff(accountOrgId)
         ]);
 
         if (cancelled) return;
 
-        let shared = remote?.state || null;
-        let revision = Number(remote?.revision) || 0;
+        const staffById = new Map(
+          organisationStaff.map(person => [String(person.accountStaffId || '').replace(/^account:/, ''), person])
+        );
+        const lessons = (remote.lessons || []).map(lesson => {
+          const staffId = String(lesson.coachId || '').replace(/^account:/, '');
+          return { ...lesson, coach: staffById.get(staffId)?.name || '' };
+        });
 
-        if (!shared) {
-          const created = await createOrganisationWorkspace(accountOrgId, initialSnapshot);
-          if (cancelled) return;
-          shared = created.state;
-          revision = created.revision;
-        }
+        const nextCloudState = {
+          ...remote,
+          lessons,
+          staff: organisationStaff.length ? organisationStaff : state.staff
+        };
 
-        cloudRevisionRef.current = revision;
-        setState(current => ({
-          ...mergeWorkspaceSnapshot(current, shared),
-          staff: organisationStaff.length ? organisationStaff : current.staff
-        }));
+        cloudSnapshotRef.current = structuredSnapshot(nextCloudState);
+        setState(current => ({ ...current, ...nextCloudState }));
 
-        // Authenticated organisation data should live in Supabase, not the
-        // unscoped browser demo cache.
         clearAppState();
         cloudReadyRef.current = true;
         skipCloudSaveRef.current = true;
         setCloudStatus('ready');
       } catch (error) {
-        console.error('Stage Flow workspace failed to load', error);
+        console.error('Stage Flow structured cloud failed to load', error);
         if (cancelled) return;
         cloudReadyRef.current = false;
-        setCloudMessage(error?.message || 'Could not load the organisation workspace.');
+        setCloudMessage(error?.message || 'Could not load the organisation data.');
         setCloudStatus('error');
       }
     }
 
-    bootCloudWorkspace();
+    bootStructuredCloud();
     return () => {
       cancelled = true;
     };
@@ -647,25 +671,21 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
       return undefined;
     }
 
-    const snapshot = workspaceSnapshot(state);
+    const nextSnapshot = structuredSnapshot(state);
     const timer = window.setTimeout(() => {
       cloudSaveQueueRef.current = cloudSaveQueueRef.current
         .then(async () => {
           if (!cloudReadyRef.current) return;
           setCloudStatus('saving');
           setCloudMessage('');
-          const saved = await saveOrganisationWorkspace(accountOrgId, snapshot, cloudRevisionRef.current);
-          if (saved.conflict) {
-            cloudReadyRef.current = false;
-            setCloudStatus('conflict');
-            setCloudMessage('Another device saved newer Stage Flow data. Reload to use the latest version.');
-            return;
-          }
-          cloudRevisionRef.current = saved.revision;
+
+          const previousSnapshot = cloudSnapshotRef.current || structuredSnapshot(state);
+          await saveStructuredOrganisation(accountOrgId, previousSnapshot, nextSnapshot);
+          cloudSnapshotRef.current = nextSnapshot;
           setCloudStatus('ready');
         })
         .catch(error => {
-          console.error('Stage Flow workspace failed to save', error);
+          console.error('Stage Flow structured cloud failed to save', error);
           setCloudMessage(error?.message || 'Changes could not be synced.');
           setCloudStatus('error');
         });
@@ -741,14 +761,10 @@ function App({ accountMode = false, accountStaff = null, onAccountSignOut = null
     <div className='top'>
       <div className='brand'>Stage Flow</div>
       <div className='top-actions'>
-        {accountMode && <span className={'cloud-sync-status ' + cloudStatus}>{cloudStatus === 'saving' ? 'Saving…' : cloudStatus === 'conflict' ? 'Sync conflict' : cloudStatus === 'error' ? 'Sync issue' : 'Cloud synced'}</span>}
+        {accountMode && <span className={'cloud-sync-status ' + cloudStatus}>{cloudStatus === 'saving' ? 'Saving…' : cloudStatus === 'error' ? 'Sync issue' : 'Cloud synced'}</span>}
         {activeStaff && <button className='btn' onClick={onAccountSignOut || lockStaff}>{onAccountSignOut ? 'Sign out' : 'Lock'}</button>}
       </div>
     </div>
-    {accountMode && cloudStatus === 'conflict' && <div className='cloud-conflict-banner'>
-      <span>{cloudMessage}</span>
-      <button className='btn' onClick={() => window.location.reload()}>Reload latest</button>
-    </div>}
     <div className='wrap'>
       <nav className={'rail ' + (coachOnly ? 'coach-rail' : '')}>{screens.map(screen => {
         const label = screen === 'reports' ? 'Progress' : screen[0].toUpperCase() + screen.slice(1);
@@ -1155,13 +1171,12 @@ function SessionSetupWizard({ state, update, initialDay, onClose }) {
       return id;
     }
 
-    const now = Date.now();
     const newLessons = sessions.map((session, index) => {
       const groupId = groupIdForStage(session.stage);
       const label = programme === 'Custom' ? (customName.trim() || 'Custom activity') : (session.stage || typeLabel(programme));
       const assignedStaff = (state.staff || []).find(person => person.id === session.coachId);
       return {
-        id: `l${now}-${index + 1}`,
+        id: newEntityId(),
         day,
         time: session.time,
         duration: Number(duration) || 30,
@@ -1483,7 +1498,7 @@ function LearnerNotesPanel({ state, update, learner, canEdit, onClose }) {
     const text = draft.trim();
     if (!text) return;
     const note = {
-      id: `note-${Date.now()}`,
+      id: newEntityId(),
       text,
       source,
       author: staff?.name || 'Admin',

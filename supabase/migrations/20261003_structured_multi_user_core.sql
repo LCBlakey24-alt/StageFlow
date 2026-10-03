@@ -1,0 +1,23 @@
+-- Normalized multi-user core for Stage Flow.
+-- Applied to Supabase before this file was committed.
+
+-- Tables:
+-- organisation_settings
+-- session_templates
+-- learners
+-- learner_notes
+-- session_occurrences
+-- attendance_records
+-- assessment_results
+-- learner_progress
+-- learner_measurements
+-- session_notes
+--
+-- RLS restricts sessions/learners to the current organisation and, for
+-- Coach accounts, to the coach's assigned session. Admin/Owner accounts can
+-- manage organisation structure. Assessment/note writes also respect the
+-- staff permission flags and the session feature switches.
+--
+-- See the live database migrations:
+--   structured_multi_user_core
+--   expand_attendance_statuses
