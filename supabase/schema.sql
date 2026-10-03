@@ -1,12 +1,12 @@
 -- Stage Flow database notice
 --
 -- DO NOT use this file to provision Stage Flow.
--- It was originally an early schema draft and is intentionally kept as a
--- harmless pointer so old links do not run an obsolete database design.
---
--- The authoritative database history is:
+-- The authoritative database history is in:
 --   supabase/migrations/
 --
--- Apply migrations in timestamp order, or use the connected Supabase project.
--- Current production tables include organisation/account foundations and the
--- RLS-protected organisation workspace.
+-- Stage Flow now uses a normalized, RLS-protected multi-user core:
+-- organisations/staff, organisation settings, recurring session templates,
+-- learners, dated session occurrences, attendance, assessment history/current
+-- progress, learner measurements, learner notes, and per-session notes.
+--
+-- Apply migrations in timestamp order or use the connected Supabase project.
